@@ -36,6 +36,12 @@ from runtime.orchestrator import TaskSpec
 
 CriterionStatus = Literal["pass", "fail", "partial", "unverifiable"]
 
+# Sub-categorization for `unverifiable`. Lets the runner, CLI, and audit log
+# distinguish "the criterion is badly worded" from "tests were skipped".
+# `None` is backward-compat: older LLM outputs that don't emit this field
+# default to `criterion_design` (the safe, conservative bucket).
+UnverifiableReason = Literal["criterion_design", "test_infrastructure"]
+
 
 class CriterionVerdict(BaseModel):
     """One acceptance criterion's structured verdict.
@@ -51,6 +57,12 @@ class CriterionVerdict(BaseModel):
     status: CriterionStatus
     evidence: str
     code_quote: str | None = None
+    unverifiable_reason: UnverifiableReason | None = None
+    """Set only when `status == "unverifiable"`. `criterion_design` means the
+    criterion wording is ambiguous and no machine check can confirm it.
+    `test_infrastructure` means the criterion requires test execution but
+    tests were skipped or unavailable. Default `None` maps to
+    `criterion_design` for backward compat."""
 
 
 class ReviewVerdict(BaseModel):
@@ -85,6 +97,24 @@ class ReviewVerdict(BaseModel):
         return any(c.status == "unverifiable" for c in self.criteria_verdicts)
 
     @property
+    def unverifiable_by_design(self) -> list[CriterionVerdict]:
+        """Criteria unverifiable due to ambiguous wording (not Worker's fault)."""
+        return [
+            c for c in self.criteria_verdicts
+            if c.status == "unverifiable"
+            and (c.unverifiable_reason or "criterion_design") == "criterion_design"
+        ]
+
+    @property
+    def unverifiable_by_infra(self) -> list[CriterionVerdict]:
+        """Criteria unverifiable because test infrastructure is unavailable."""
+        return [
+            c for c in self.criteria_verdicts
+            if c.status == "unverifiable"
+            and c.unverifiable_reason == "test_infrastructure"
+        ]
+
+    @property
     def reasons(self) -> list[str]:
         out: list[str] = []
         for c in self.criteria_verdicts:
@@ -92,9 +122,15 @@ class ReviewVerdict(BaseModel):
                 quote = f" — code: `{c.code_quote}`" if c.code_quote else ""
                 out.append(f"[{c.status}] {c.criterion}: {c.evidence}{quote}")
             elif c.status == "unverifiable":
+                reason = c.unverifiable_reason or "criterion_design"
+                if reason == "test_infrastructure":
+                    tag = "unverifiable:test_infra"
+                    note = "(test runner unavailable — set AI_FACTORY_TEST_CMD)"
+                else:
+                    tag = "unverifiable:design"
+                    note = "(criterion design issue, not Worker fault)"
                 out.append(
-                    f"[unverifiable] {c.criterion}: {c.evidence} "
-                    "(criterion design issue, not Worker fault)"
+                    f"[{tag}] {c.criterion}: {c.evidence} {note}"
                 )
         out.extend(f"[L1] {v}" for v in self.l1_violations)
         return out

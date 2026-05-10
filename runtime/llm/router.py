@@ -13,11 +13,17 @@ Each agent role can run on a different provider/model. Routing precedence:
 This lets us run cheap/high-volume work (Babel, Analyst) on DeepSeek while
 keeping critical decisions (Architect, SecurityReviewer) on Claude — without
 agent code knowing or caring.
+
+Fail-loud: critical roles (`architect`, `security_reviewer`) emit a
+stderr warning when resolved via global fallback rather than a role-specific
+provider, since a cheap model on these roles can produce incorrect tier
+selections or miss security vulnerabilities.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
 from runtime.llm.client import LLMClient
 
@@ -32,6 +38,12 @@ KNOWN_ROLES = frozenset({
     "test_reviewer",
     "perf_reviewer",
 })
+
+# Roles where an unintended cheap-model fallback can cause structural damage
+# to the pipeline output (wrong tier, missed CVE, etc.). When these roles
+# resolve their provider via global fallback instead of a role-specific env,
+# we warn the operator loudly.
+_CRITICAL_ROLES = frozenset({"architect", "security_reviewer"})
 
 
 def _env_for(role: str, suffix: str) -> str | None:
@@ -54,4 +66,20 @@ def client_for(
     role_norm = role.strip().lower()
     chosen_provider = provider or _env_for(role_norm, "PROVIDER")
     chosen_model = model or _env_for(role_norm, "MODEL")
+
+    # Fail-loud: warn when a critical role has no explicit provider override
+    # and will resolve to whatever LLM_PROVIDER (or the hardcoded default)
+    # happens to be. This catches the common misconfiguration where
+    # LLM_PROVIDER=deepseek but ARCHITECT_PROVIDER is unset → Architect
+    # runs on a cheap model → wrong RFC decisions.
+    if role_norm in _CRITICAL_ROLES and chosen_provider is None:
+        global_prov = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+        print(
+            f"[ortim] WARNING: critical role '{role_norm}' has no explicit "
+            f"provider ({role_norm.upper()}_PROVIDER not set); falling back "
+            f"to global LLM_PROVIDER='{global_prov}'. Set "
+            f"{role_norm.upper()}_PROVIDER explicitly for production use.",
+            file=sys.stderr,
+        )
+
     return LLMClient(provider=chosen_provider, model=chosen_model)

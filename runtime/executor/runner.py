@@ -374,18 +374,29 @@ def execute_task(
         # reviewer didn't have). Retrying with the same Worker won't help —
         # the Orchestrator needs to rewrite the criteria.
         record.status = TaskStatus.AWAITING_HITL
+        design_failures = [c.criterion for c in verdict.unverifiable_by_design]
+        infra_failures = [c.criterion for c in verdict.unverifiable_by_infra]
         audit.log(
             "executor_criteria_design_failure",
             project_id=project_id,
             task_id=task.id,
-            unverifiable=[
-                c.criterion
-                for c in verdict.criteria_verdicts
-                if c.status == "unverifiable"
-            ],
+            unverifiable=design_failures + infra_failures,
+            unverifiable_design=design_failures,
+            unverifiable_infra=infra_failures,
             attempt=record.attempts,
         )
-        error_msg = "criteria_design_failure (one or more criteria are unverifiable)"
+        if infra_failures and not design_failures:
+            error_msg = (
+                "test_infrastructure_unavailable "
+                "(set AI_FACTORY_TEST_CMD to resolve)"
+            )
+        elif design_failures and not infra_failures:
+            error_msg = "criteria_design_failure (ambiguous criteria — rewrite needed)"
+        else:
+            error_msg = (
+                "criteria_design_failure (mixed: "
+                f"{len(design_failures)} design + {len(infra_failures)} infra)"
+            )
     else:
         record.status = (
             TaskStatus.AWAITING_HITL
