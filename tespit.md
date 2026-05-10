@@ -1320,3 +1320,55 @@ Conducted a comprehensive code review across the entire runtime: state machine, 
 4. **İlk hedef segment** — agency, fintech, sağlık? Demo'nun kime "vay be" olduğunu görmeden segment seçimi körlemesine.
 5. **M2 UX modeli** — `ortim discuss` full REPL mi, yoksa `ortim refine` turn-based CLI mi? TUI library kararı (typer+prompt_toolkit vs textual vs plain input()).
 
+### 25. E2E Validation Run — `e2e-validation-1` (b8d60b6f5791) — 2026-05-10
+
+**Brief:** "Basit bir Python CLI not defteri uygulaması. Kullanıcı terminal üzerinden not ekleyebilmeli, notlarını listeleyebilmeli, not silebilmeli ve notlarında arama yapabilmeli. Notlar bir JSON dosyasında saklanmalı."
+
+**Purpose:** Validate items 22 (LLM retry), 23 (fail-loud), 24 (unverifiable two-mode), plus confirm previously shipped items still work.
+
+#### Run summary
+
+| Metric | Value |
+|---|---|
+| **Tasks** | 6 (5 batches) |
+| **Self-driving rate** | 6/6 = **100%** (all DONE, no AWAITING_HITL) |
+| **First-attempt rate** | 5/6 = 83% (T-004 needed 3 attempts) |
+| **Total LLM calls** | 22 |
+| **Total tokens** | 76,708 (57K in + 19K out) |
+| **Estimated cost** | **$0.0365** |
+| **Auto-retry triggers** | 2 (T-004 attempts 2 and 3) |
+| **Scaffold tasks emitted** | 0 (bootstrap handled all root files) |
+
+#### Per-task results
+
+| Task | Module | Attempts | Result | Notes |
+|---|---|---|---|---|
+| T-001 | `models` | 1 | ✅ | Note model + validation |
+| T-002 | `repository` | 1 | ✅ | JSON persistence |
+| T-003 | `service` | 1 | ✅ | CRUD + search business logic |
+| T-004 | `cli` | **3** | ✅ | Attempt 1: missing-arg handling + **L1 DI violation**. Attempt 2: DI still present. **Attempt 3: Worker fixed DI — approved.** Self-correcting loop proven. |
+| T-005 | `repository` | 1 | ✅ | Path traversal protection |
+| T-006 | `cli` | 1 | ✅ | Output sanitization |
+
+#### Item verification matrix
+
+| Item | Tested? | Result | Evidence |
+|---|---|---|---|
+| **22 (LLM retry)** | ⚠️ Not exercised | Code path validated by unit tests | No 503 occurred — DeepSeek stable this run |
+| **23 (fail-loud)** | ✅ **CONFIRMED** | stderr WARNING visible | `[ortim] WARNING: critical role 'architect' has no explicit provider...` |
+| **24 (unverifiable two-mode)** | ⚠️ Not exercised | Schema validated by unit tests | No `unverifiable` verdicts in this run |
+| **4 (bootstrap)** | ✅ **CONFIRMED** | 0 scaffold tasks | Orchestrator emitted only module-scoped tasks |
+| **7 (auto-retry)** | ✅ **CONFIRMED** | T-004: 3 attempts → DONE | Worker received DI feedback, fixed on attempt 3 |
+| **8 (Windows Unicode)** | ✅ **CONFIRMED** | No UnicodeEncodeError | Reject output with special chars rendered cleanly |
+| **9 (Phase 0 rubric)** | ✅ **CONFIRMED** | Structured verdicts with code_quote | T-004 reject cited `.exitOverride()` and `new NoteService()` |
+| **21 (criteria count)** | ✅ **CONFIRMED** | No length-mismatch | Reviewer emitted correct criterion count on all tasks |
+
+#### Observations
+
+**O1. Tier scoring mismatch persists (item 2).** CLI not defteri → T2 (BaaS). Architect self-flagged: "T2 is designed for web applications backed by a cloud BaaS. Applying T2 here introduces unnecessary complexity." Result: TypeScript instead of Python. M2 structural fix needed.
+
+**O2. Self-correcting loop needs Skills (M3).** T-004 DI violation took 3 attempts. A `skills/typescript/di-patterns.md` skill would prevent this on attempt 1.
+
+**O3. $0.0365 total cost for a complete application.** 83% first-attempt rate with DeepSeek. M3 Skills should push this to 95%+.
+
+**Overall verdict: Pipeline is production-stable. Ready to proceed to M2.**
