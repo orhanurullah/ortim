@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment
+.env
+.env.local
+*.key
+*.pem
+
+# Workspaces (per-project runtime data)
+workspaces/*/
+!workspaces/.gitkeep
+
+# Audit logs
+runtime/audit/*.log
+runtime/audit/*.jsonl
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

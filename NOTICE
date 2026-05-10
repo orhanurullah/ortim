@@ -1,0 +1,29 @@
+Ortim
+Copyright 2026 ortim.dev
+
+This product is dual-licensed:
+
+  * Source files under `runtime/`, `agents/`, `docs/`, `tests/`, `scripts/`,
+    `fixtures/`, and the repository root (excluding `enterprise/`) are
+    licensed under the Functional Source License, Version 1.1, Apache 2.0
+    Future License (FSL-1.1-Apache-2.0). See LICENSE.
+
+  * Source files under `enterprise/` are licensed under a Commercial
+    License. See LICENSE.commercial.
+
+Each source file declares its license via an SPDX identifier in its header.
+
+This product includes software developed by third parties:
+
+  * anthropic (Anthropic, Inc.) — MIT
+  * pydantic (Pydantic Services, Inc.) — MIT
+  * typer (Sebastián Ramírez) — MIT
+  * rich (Will McGugan) — MIT
+  * python-dotenv (Saurabh Kumar) — BSD-3-Clause
+  * pathspec (Caleb P. Burns) — MPL-2.0  [planned dependency, M1]
+
+Full third-party license texts are available at the source repositories of
+each dependency. Inclusion in this NOTICE does not imply that the listed
+projects endorse Ortim.
+
+For commercial licensing inquiries: licensing@ortim.dev

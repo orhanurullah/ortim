@@ -1,0 +1,47 @@
+# Ortim — Commercial License
+
+Copyright 2026 ortim.dev — All Rights Reserved.
+
+This file applies **only** to source files marked with the SPDX identifier
+`LicenseRef-Commercial`, which currently live under the `enterprise/`
+directory. All other source files in this repository are licensed under
+FSL-1.1-Apache-2.0 (see `LICENSE`).
+
+## 1. Scope
+
+The Commercial Software is offered under a separate commercial agreement
+between ortim.dev and the Licensee. Without such an agreement, the
+Commercial Software may not be used, copied, modified, merged, published,
+distributed, sublicensed, or sold.
+
+## 2. Permitted Use Without Agreement
+
+In the absence of a commercial agreement, the source code under
+`enterprise/` is provided **for evaluation and reference only**. No
+production use, no redistribution, no derivative works.
+
+## 3. Obtaining a Commercial Agreement
+
+For pricing, terms, and a commercial license agreement covering one or more
+of the following, contact `licensing@ortim.dev` (or the address listed at
+`https://ortim.dev/contact`):
+
+- Multi-tenant orchestrator deployment
+- SSO / SAML integration
+- Long-term audit retention with off-site export (S3, GCS, Azure Blob)
+- SLA-backed support tier (response time guarantees, priority bug fixes)
+- Custom Golden Path tiers and reviewer chains
+- White-label / OEM redistribution rights
+
+## 4. No Warranty
+
+THE COMMERCIAL SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY
+KIND. ORTIM.DEV WILL NOT BE LIABLE FOR ANY DAMAGES ARISING OUT OF THE USE OR
+NATURE OF THE COMMERCIAL SOFTWARE, UNDER ANY KIND OF LEGAL CLAIM, EXCEPT AS
+EXPLICITLY SET OUT IN A SIGNED COMMERCIAL AGREEMENT.
+
+## 5. Trademarks
+
+"Ortim" and the ortim.dev domain are trademarks of ortim.dev. Use of these
+marks beyond identifying ortim.dev as the origin of the Commercial Software
+requires a separate trademark agreement.
