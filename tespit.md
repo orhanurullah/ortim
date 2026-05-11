@@ -1371,4 +1371,112 @@ Conducted a comprehensive code review across the entire runtime: state machine, 
 
 **O3. $0.0365 total cost for a complete application.** 83% first-attempt rate with DeepSeek. M3 Skills should push this to 95%+.
 
-**Overall verdict: Pipeline is production-stable. Ready to proceed to M2.**
+**Overall verdict: Pipeline is production-stable for run lifecycle. Code output quality needs structural fixes — see item 26 below.**
+
+### 26. Post-run code quality audit — `e2e-validation-1` output does NOT compile — HIGH PRIORITY
+
+**Discovery context.** 2026-05-10 post-E2E-validation. After the pipeline reported 6/6 tasks DONE, we attempted to actually compile and run the generated TypeScript application. `npx tsc --noEmit` produced **10 compilation errors**. The application cannot be built or executed as-is.
+
+**Root cause analysis.** The Reviewer approved code that passes a *rubric-based semantic review* but was never subjected to *actual compilation*. This is the expected limitation documented in Phase 0: test runner was skipped (`npx` not on PATH during the pipeline run, or `AI_FACTORY_TEST_CMD` not configured for this tier). The Reviewer correctly noted `tests: skipped` on every task but the rubric assessed code logic, not compilation correctness.
+
+#### Compilation errors (10 total, 4 distinct categories)
+
+| Category | Count | Files | Root cause |
+|---|---|---|---|
+| **Wrong import paths** | 2 | `cli/index.ts:2-3` | `import from '../service/NoteService'` and `'../repository/NoteRepository'` — but files are `service/index.ts` and `repository/index.ts`. Worker used class-name-based imports instead of barrel-style. |
+| **Missing `types: ["node"]` in tsconfig** | 7 | `cli/index.ts`, `repository/index.ts` | `process`, `path`, `fs`, `os` not recognized. Worker wrote Node.js code but didn't add `"types": ["node"]` to `tsconfig.json`. |
+| **Missing function export** | 1 | `service/index.ts:3` | `import { validateNoteInput } from '../models'` — this function was never defined in `models/index.ts`. Worker hallucinated a function name. |
+
+#### Runtime errors (would surface after compilation fix)
+
+| Issue | File | Description |
+|---|---|---|
+| **Constructor arity mismatch** | `cli/index.ts:25` | `new NoteRepository()` — no args — but `NoteRepository` constructor requires `filePath: string`. App would crash at runtime. |
+| **Missing dependencies** | `package.json` | No `dependencies` section — `commander`, `uuid` not listed. `npm install` from scratch would produce a broken `node_modules`. |
+| **No entry point** | (none) | `run()` is exported from `cli/index.ts` but no `main.ts` or `bin` script calls it. User cannot `node dist/main.js` or `npx note add`. |
+
+#### Cross-task interface inconsistency
+
+Worker T-003 (service) imported `validateNoteInput` from `../models` — a function T-001 (models) never created. Worker T-004 (cli) imported `NoteService` from `../service/NoteService` — a path that doesn't exist (T-003 wrote `service/index.ts`). Worker T-006 (cli sanitization) overwrote T-004's `cli/index.ts` and kept the wrong import paths.
+
+This is the **same failure class as T-009 in todo-greenfield-2**: each task is written in isolation; Worker doesn't verify its imports against what prior tasks actually produced.
+
+#### Why the Reviewer didn't catch this
+
+1. **No TypeScript compiler ran.** Test runner was skipped → no `tsc` verification. Reviewer assessed code semantics (DI, logic, L1 principles), not syntactic correctness.
+2. **Reviewer has no cross-task memory.** Each task is reviewed independently. Reviewer for T-003 doesn't see T-001's actual exports; it only sees T-003's code + the acceptance criteria + the RFC.
+3. **Import path convention is model-specific knowledge.** Whether to import `../repository` (barrel) vs `../repository/NoteRepository` (direct) depends on project convention. Worker picked one, Reviewer didn't flag it because the *logic* was correct.
+
+#### Severity assessment
+
+**HIGH.** This invalidates the "100% self-driving" claim from item 25. The pipeline is self-driving in terms of its *own approval lifecycle*, but the output is **non-functional**. A user who runs the pipeline and then tries `npm run build` will immediately see 10 errors and lose trust.
+
+#### Structural fixes needed
+
+| Fix | Where | Addresses | Priority |
+|---|---|---|---|
+| **Test runner must be mandatory for code tasks** | `runner.py` / reviewer rubric | If `AI_FACTORY_TEST_CMD` is set and tests were configured, `tsc --noEmit` should be the minimum bar for TypeScript projects | 🔴 P0 — without this, "approved" means nothing |
+| **Cross-task import verification** | M2/M3 scope | Worker needs to see prior task outputs (or at least their exports) when writing code that imports from other modules | 🟡 P1 — `read_related()` already exists but isn't used for cross-module imports |
+| **Bootstrap must write complete `package.json`** | `bootstrap.py` | T2/web template should include `commander`, `uuid`, `@types/node` as dependencies when the RFC specifies them | 🟡 P1 — or Worker must add dependencies |
+| **Entry point generation** | Orchestrator / bootstrap | A task or bootstrap step should create `main.ts` (or `bin` config in package.json) | 🟢 P2 |
+
+#### Lesson for Ortim development
+
+> **Pipeline "approved" ≠ code works.** The Reviewer is a semantic gate, not a compiler. Until the test runner is properly configured and mandatory (Phase 0 9c intent), the "self-driving rate" metric measures *pipeline lifecycle completion*, not *code quality*. The true metric should be: "does the output compile and pass tests?" — which requires M2 (stack negotiation → correct test runner) and M3 (skills → correct import patterns).
+
+**This finding does NOT invalidate items 22-24 (those fixes are about pipeline resilience, not code quality). But it recalibrates item 25's "100% self-driving" claim to "100% pipeline-complete, 0% compile-verified."**
+
+#### Functional test results (post-manual-fix)
+
+After applying **7 manual fixes** to the generated code, the application was compiled and tested end-to-end:
+
+**Manual fixes applied (all would be unnecessary with proper test runner + cross-task import checks):**
+
+| # | Fix | Category |
+|---|---|---|
+| 1 | Added missing `validateNoteInput()` function to `models/index.ts` | Worker hallucination — T-003 imported a function T-001 never created |
+| 2 | Added `"types": ["node"]` to `tsconfig.json` | Missing config — Worker wrote Node.js code but didn't configure TypeScript for it |
+| 3 | Fixed import paths in `cli/index.ts` (`../service/NoteService` → `../service`) | Wrong barrel import convention — Worker used class-name paths |
+| 4 | Fixed `NoteRepository()` → `NoteRepository(notesPath)` in `cli/index.ts` | Constructor arity mismatch — CLI called without required `filePath` arg |
+| 5 | Added entry point (`run(process.argv)`) to `cli/index.ts` | No main — `run()` was exported but never called |
+| 6 | Added `dependencies` to root `package.json` (commander, uuid, @types/node) | Missing deps — Workers never registered their npm dependencies |
+| 7 | Removed `repository/package.json` (sub-package.json broke ESM module resolution) | Conflicting package.json — T-002 created its own package.json without `"type": "module"`, breaking Node.js ESM resolution for the entire `repository/` subtree |
+
+**Compilation result after fixes:** `npx tsc --noEmit` → **0 errors** ✅
+
+**Functional test matrix:**
+
+| Test | Command | Expected | Actual | Result |
+|---|---|---|---|---|
+| Help | `note --help` | Show commands: add, list, delete, search | Shows all 4 commands + version | ✅ |
+| Add note | `note add "Ilk notum" "test icerik"` | `Created note: Ilk notum` | Prints confirmation, writes JSON | ✅ |
+| List notes | `note list` | Show all notes, newest first | 2 notes displayed, date-sorted desc | ✅ |
+| Search | `note search "Flutter"` | Show only matching note | 1 result, correct note | ✅ |
+| Search (no match) | `note search "olmayan"` | `No notes found.` | Correct empty message | ✅ |
+| Delete | `note delete <id>` | `Note deleted.` | Note removed, confirmed via list | ✅ |
+| Delete invalid | `note delete "yok-id"` | Error message | `Error: Note not found` (exit code 1) | ✅ |
+| JSON structure | Check `~/.notes/notes.json` | `{version, notes: [{id, title, content, created_at}]}` | Correct schema, UUID v4, ISO date | ✅ |
+
+**Functional test result: 8/8 = 100%** — all core features work correctly after manual fixes.
+
+**Missing behaviors (not in brief but expected for a usable tool):**
+- `~/.notes/` directory not auto-created on first `add` → ENOENT crash (fix: `fs.mkdirSync(dir, {recursive: true})` in writeAll)
+- No `update`/`edit` command (brief didn't ask for it, so not a defect)
+- No confirmation before delete (acceptable for CLI tool)
+
+#### Summary metrics — recalibrated
+
+| Metric | Value |
+|---|---|
+| Pipeline self-driving rate | 6/6 = 100% (lifecycle) |
+| Compilation success (as-generated) | **0%** — 10 TS errors |
+| Manual fixes to compile | **7** |
+| Functional test pass (post-fix) | **8/8 = 100%** |
+| Fix categories | 3 cross-task import, 2 missing config, 1 hallucination, 1 ESM conflict |
+
+**Key insight:** The generated code's *logic* is sound — once imports and config are fixed, everything works. The defects are all **integration-layer** problems (cross-task imports, config completeness, module resolution). These are exactly the problems that:
+1. A **real test runner** (`tsc --noEmit` + `vitest run`) would catch during the pipeline
+2. **Cross-task file visibility** (`read_related()` for prior task outputs) would prevent
+3. **Skills** (`skills/typescript/esm-module-patterns.md`) would guide correctly
+
+**This confirms M2 (stack negotiation → test runner) as the highest-priority next step for code quality, not just UX.**
