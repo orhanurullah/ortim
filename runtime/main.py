@@ -1222,6 +1222,31 @@ def run_all(
 
     if _maybe_finalize_done(project, status_file, dag, workspace):
         console.print("\n[bold green]All tasks DONE — project complete.[/bold green]")
+        
+        readme_path = workspace / "README.md"
+        if not readme_path.exists():
+            console.print("\n[cyan]Documenter:[/cyan] drafting README.md...")
+            try:
+                from runtime.agents.documenter import DocumenterAgent
+                from runtime.llm import client_for
+                
+                doc_llm = client_for("analyst")
+                documenter = DocumenterAgent(doc_llm, memory, audit)
+                
+                prd_text = (workspace / "PRD.md").read_text(encoding="utf-8") if (workspace / "PRD.md").exists() else ""
+                
+                readme_text = documenter.generate_readme(
+                    project_name=project.name,
+                    prd_text=prd_text,
+                    rfc_text=rfc_text,
+                    project_id=project.id,
+                )
+                
+                readme_path.write_text(readme_text, encoding="utf-8")
+                console.print(f"[green]README saved:[/green] {readme_path}")
+            except Exception as e:
+                console.print(f"[yellow]Could not generate README.md automatically: {e}[/yellow]")
+
     elif blocked:
         console.print(
             "\n[yellow]Stopped: at least one task is not DONE. "
