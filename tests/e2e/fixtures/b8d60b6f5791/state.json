@@ -1,0 +1,90 @@
+{
+  "id": "b8d60b6f5791",
+  "name": "e2e-validation-1",
+  "initial_brief_tr": "Basit bir Python CLI not defteri uygulaması. Kullanıcı terminal üzerinden not ekleyebilmeli, notlarını listeleyebilmeli, not silebilmeli ve notlarında arama yapabilmeli. Notlar bir JSON dosyasında saklanmalı. Her notun başlık, içerik ve oluşturulma tarihi alanları olmalı.",
+  "state": "done",
+  "history": [
+    {
+      "timestamp": "2026-05-10T18:29:23.978632+00:00",
+      "from_state": "intake",
+      "to_state": "babel_processing",
+      "actor": "babel-layer",
+      "note": ""
+    },
+    {
+      "timestamp": "2026-05-10T18:29:32.872087+00:00",
+      "from_state": "babel_processing",
+      "to_state": "prd_drafting",
+      "actor": "babel-layer",
+      "note": "intent extracted"
+    },
+    {
+      "timestamp": "2026-05-10T18:29:48.113029+00:00",
+      "from_state": "prd_drafting",
+      "to_state": "prd_awaiting_approval",
+      "actor": "analyst",
+      "note": "PRD ready for review"
+    },
+    {
+      "timestamp": "2026-05-10T18:29:55.947567+00:00",
+      "from_state": "prd_awaiting_approval",
+      "to_state": "prd_approved",
+      "actor": "cli-manual",
+      "note": "E2E validation run - PRD onay"
+    },
+    {
+      "timestamp": "2026-05-10T18:30:04.136703+00:00",
+      "from_state": "prd_approved",
+      "to_state": "rfc_drafting",
+      "actor": "architect",
+      "note": "extracting inputs"
+    },
+    {
+      "timestamp": "2026-05-10T18:30:45.905818+00:00",
+      "from_state": "rfc_drafting",
+      "to_state": "rfc_awaiting_approval",
+      "actor": "architect",
+      "note": "tier=T2"
+    },
+    {
+      "timestamp": "2026-05-10T18:31:05.344195+00:00",
+      "from_state": "rfc_awaiting_approval",
+      "to_state": "rfc_approved",
+      "actor": "cli-manual",
+      "note": "E2E validation - RFC onay"
+    },
+    {
+      "timestamp": "2026-05-10T18:31:13.763533+00:00",
+      "from_state": "rfc_approved",
+      "to_state": "tasks_generating",
+      "actor": "orchestrator",
+      "note": "generating DAG"
+    },
+    {
+      "timestamp": "2026-05-10T18:31:41.188569+00:00",
+      "from_state": "tasks_generating",
+      "to_state": "tasks_ready",
+      "actor": "orchestrator",
+      "note": "6 tasks, 5 batches"
+    },
+    {
+      "timestamp": "2026-05-10T18:31:57.449862+00:00",
+      "from_state": "tasks_ready",
+      "to_state": "executing",
+      "actor": "executor",
+      "note": "run-all start"
+    },
+    {
+      "timestamp": "2026-05-10T18:35:25.083474+00:00",
+      "from_state": "executing",
+      "to_state": "done",
+      "actor": "executor",
+      "note": "all tasks done"
+    }
+  ],
+  "created_at": "2026-05-10T18:29:13.536786+00:00",
+  "tenant_id": "default",
+  "is_brownfield": false,
+  "app_class": "web",
+  "source_path": null
+}

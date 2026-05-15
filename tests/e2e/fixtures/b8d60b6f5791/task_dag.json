@@ -1,0 +1,123 @@
+{
+  "project_id": "b8d60b6f5791",
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Define Note model and validation functions",
+      "description": "Create the Note interface and StorageFile interface in models module. Implement validation functions: isValidTitle, isValidContent, isValidId, parseNote. Export types and validators.",
+      "module_scope": "models",
+      "dependencies": [],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file models/index.ts exports interface Note with fields id (string), title (string), content (string), created_at (string)",
+        "file models/index.ts exports interface StorageFile with fields version (number), notes (Note[])",
+        "file models/index.ts exports function isValidTitle(title: string): boolean that returns false for empty string and strings longer than 200 characters",
+        "file models/index.ts exports function isValidContent(content: string): boolean that returns false for strings longer than 10000 characters",
+        "file models/index.ts exports function isValidId(id: string): boolean that returns true only for UUID v4 format (regex /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)",
+        "file models/index.ts exports function parseNote(data: unknown): Note that throws on invalid input"
+      ],
+      "rfc_section": "§5 Data Model"
+    },
+    {
+      "id": "T-002",
+      "title": "Implement NoteRepository with JSON file persistence",
+      "description": "Create NoteRepository class in repository module. Implement readAll, writeAll, findById, findByKeyword methods. Use Node.js fs module to read/write ~/.notes/notes.json. Support configurable file path via NOTES_FILE_PATH env var. Implement file locking with lockfile. Create backup before each write.",
+      "module_scope": "repository",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file repository/index.ts exports class NoteRepository",
+        "constructor accepts optional filePath parameter (defaults to ~/.notes/notes.json)",
+        "readAll() returns Promise<Note[]> and reads JSON from file path",
+        "writeAll(notes: Note[]) writes pretty-printed JSON to file path and creates backup in ~/.notes/backups/notes-{timestamp}.json",
+        "findById(id: string) returns Promise<Note | null>",
+        "findByKeyword(keyword: string) returns Promise<Note[]> matching keyword in title or content (case-insensitive)",
+        "on corrupted JSON file: readAll() rejects with error message containing 'Invalid notes file'",
+        "on file not found: readAll() returns empty array",
+        "on write: acquires lockfile at ~/.notes/notes.lock and releases after write"
+      ],
+      "rfc_section": "§7 Module Breakdown — repository"
+    },
+    {
+      "id": "T-003",
+      "title": "Implement NoteService with business logic",
+      "description": "Create NoteService class in service module. Implement add, list, delete, search methods. Validate input using models. Generate UUID v4 and ISO 8601 timestamp for new notes. Delegate persistence to NoteRepository.",
+      "module_scope": "service",
+      "dependencies": [
+        "T-001",
+        "T-002"
+      ],
+      "estimated_tokens": 5000,
+      "acceptance_criteria": [
+        "file service/index.ts exports class NoteService",
+        "constructor accepts NoteRepository instance",
+        "add(title: string, content: string) returns Promise<Note> with generated id (UUID v4), created_at (ISO 8601), and stores via repository",
+        "add() throws on invalid title or content (message includes validation error)",
+        "list() returns Promise<Note[]> sorted by created_at descending",
+        "delete(id: string) returns Promise<void> and removes note from repository",
+        "delete() throws with message 'Note not found' if id does not exist",
+        "search(keyword: string) returns Promise<Note[]> matching keyword in title or content (case-insensitive)"
+      ],
+      "rfc_section": "§7 Module Breakdown — service"
+    },
+    {
+      "id": "T-004",
+      "title": "Implement CLI commands with Commander",
+      "description": "Create CLI entry point using Commander. Implement add, list, delete, search commands. Parse arguments, call NoteService, format output. Handle errors: print to stderr and exit with code 1. Handle usage errors with exit code 2.",
+      "module_scope": "cli",
+      "dependencies": [
+        "T-003"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file cli/index.ts exports function run(argv: string[]): Promise<ExitCode>",
+        "command 'note add <title> <content>' calls service.add and prints created note id to stdout",
+        "command 'note list' calls service.list and prints each note as '[ ] <id> <title> (<created_at>)' on separate lines",
+        "command 'note delete <id>' calls service.delete and prints 'Deleted note <id>' to stdout",
+        "command 'note search <keyword>' calls service.search and prints matching notes in same format as list",
+        "on missing arguments: prints usage to stderr and exits with code 2",
+        "on service error: prints error message to stderr and exits with code 1",
+        "on success: exits with code 0"
+      ],
+      "rfc_section": "§7 Module Breakdown — cli"
+    },
+    {
+      "id": "T-005",
+      "title": "Add path traversal protection for NOTES_FILE_PATH",
+      "description": "In repository module, validate that the resolved NOTES_FILE_PATH is within user's home directory or a subdirectory. Reject paths that escape via '..' or absolute paths outside home.",
+      "module_scope": "repository",
+      "dependencies": [
+        "T-002"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file repository/index.ts exports function isPathSafe(filePath: string): boolean",
+        "isPathSafe returns false for paths containing '..' that escape home directory",
+        "isPathSafe returns false for absolute paths not under home directory",
+        "NoteRepository constructor throws if filePath fails isPathSafe check",
+        "error message contains 'Path traversal detected'"
+      ],
+      "rfc_section": "§13 Security Posture"
+    },
+    {
+      "id": "T-006",
+      "title": "Add output sanitization for terminal display",
+      "description": "In cli module, sanitize note title and content before printing to stdout to prevent terminal injection. Escape special characters like newlines, escape sequences, and control characters.",
+      "module_scope": "cli",
+      "dependencies": [
+        "T-004"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file cli/index.ts exports function sanitizeForTerminal(text: string): string",
+        "sanitizeForTerminal replaces newlines with space",
+        "sanitizeForTerminal removes ANSI escape sequences (regex /\\x1b\\[[0-9;]*m/g)",
+        "sanitizeForTerminal removes control characters (ASCII 0-31 except tab)",
+        "list and search output uses sanitized title and content"
+      ],
+      "rfc_section": "§13 Security Posture"
+    }
+  ]
+}

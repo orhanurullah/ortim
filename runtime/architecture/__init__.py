@@ -15,10 +15,12 @@ from runtime.architecture.golden_paths import (
     score_all,
     select_tier,
 )
+from runtime.architecture.locked_stack import LockedStack
 
 __all__ = [
     "AppClass",
     "GoldenPathInputs",
+    "LockedStack",
     "OpsCapacity",
     "Scale",
     "TeamSize",

@@ -59,7 +59,9 @@ Read the **approved** RFC and produce a Task DAG: a list of atomic, independentl
     - DB migrations → `shared/migrations/`
     - Reusable scripts → `shared/scripts/`
     - Test utilities → `shared/test-utils/`
-    Tasks that touch these MUST set `module_scope: "shared"` and only write paths under `shared/`.
+    Tasks that touch these MUST set `module_scope: "shared"` and only write paths under `shared/`. **`shared` is only a valid module_scope when RFC §7 explicitly lists it — see Rule 13.**
+
+13. **`task.module_scope` MUST be a verbatim module from RFC §7 Module Breakdown.** Read the §7 table (or bullet list). The set of valid `module_scope` values for this DAG is EXACTLY the set of module names in §7. Do NOT introduce `shared`, `common`, `core`, `utils`, or any other synthetic catch-all if it is not listed in §7. If multiple small files belong to the same RFC module (e.g. `db/init.ts` and `db/schema.ts`), they share that module's scope — never collapse two distinct RFC modules into a single synthetic one. **Validator behavior:** after the DAG is emitted, the runtime parses RFC §7's module names and rejects the DAG if any `task.module_scope` is missing from that set; the rejection feedback names the offending tasks and the allowed set. You get up to 3 attempts before the orchestrator hard-fails — fix it on the first try by quoting §7 exactly.
 
 ## Task Granularity Heuristics
 
@@ -74,6 +76,25 @@ Read the **approved** RFC and produce a Task DAG: a list of atomic, independentl
 - Entity definition + its repository (if trivial)
 - HTTP handler + its DTO/schema
 - A migration with its rollback
+
+## Extend Cycle Task Granularity
+
+When the user prompt contains an **"Extend cycle context"** block, the granularity heuristics above shift. Initial DAG generation treats each acceptance criterion as a candidate task because initial tasks are typically structural (one module per task: model, store, handler, cmd). Extend-cycle ACs describe **behaviors layered on top of an existing module** (add a field, filter on it, persist it) — these bundle into feature-cohesive units, not one task per AC.
+
+**Aggregation rule.** Group delta acceptance criteria by **(module_scope × behavioral cluster)**. Each cluster becomes one task. A behavioral cluster is a set of ACs that:
+- share the same `module_scope`, AND
+- describe related operations on the same data shape or UI surface (e.g. all CRUD methods on one entity, all sibling UI components rendering the same field, all persistence ACs for one new column).
+
+**Target.** A 10-AC delta brief should typically yield **3–5 new tasks**, not 10. A 3-AC delta brief should typically yield **1–2 new tasks**. Do not pad with one-AC-per-task to inflate the DAG.
+
+**Example — bundle, do not split:**
+- Delta ACs (paraphrased): "user can add tags to a task", "user can remove tags from a task", "user can query tasks by tag list", "tags persist across sessions", "tag column added to schema", "zod validation extended for tags".
+- ❌ 6 tasks (one per AC).
+- ✅ **3 tasks**: T-007 (schema migration + zod extension, scope=task), T-008 (addTag/removeTag/getTasksByTags methods on service, scope=task), T-009 (UI tag input + badge + filter components, scope=ui).
+
+**Counter-example — keep split:** if delta ACs describe genuinely independent surface (e.g. "add 8 unrelated REST endpoints in 8 different modules"), each AC still maps to its own task. The aggregation rule fires only when the **same module_scope** is hit; cross-module ACs always remain separate tasks.
+
+**Trace back rule.** Every emitted extend-cycle task MUST trace back to at least one delta RFC `### Module Breakdown (delta)` row OR at least one delta acceptance criterion. Tasks invented from parent-RFC context (performance thresholds, observability hooks, deployment concerns mentioned in baseline RFC §11–§16) are forbidden — they belong to a separate extend cycle if the user wants them.
 
 ## Anti-Patterns (forbidden)
 - Tasks spanning multiple modules (split or move shared bits to `shared/`)

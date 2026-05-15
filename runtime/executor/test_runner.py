@@ -20,9 +20,30 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+
+def _resolve_binary(name: str) -> str:
+    """Resolve a command name (`npx`, `vitest`, `pytest`, …) to its full
+    path so subprocess.run can launch it without `shell=True`.
+
+    Windows-specific reason: npm-installed CLIs are `.cmd` shims, and
+    Python's subprocess does NOT walk `PATHEXT` when launching a child
+    process directly. `shutil.which` does — so resolving first lets
+    `["npx", "vitest", "run"]` work the same on Windows as on POSIX.
+
+    Returns the input unchanged if `shutil.which` finds nothing — the
+    subprocess call will then raise FileNotFoundError, and the caller
+    surfaces a `runner X not on PATH` skip reason as before.
+    """
+    if os.sep in name or "/" in name:
+        # Already a path; leave as-is.
+        return name
+    resolved = shutil.which(name)
+    return resolved if resolved is not None else name
 
 
 @dataclass(frozen=True)
@@ -48,6 +69,66 @@ class TestResult:
         return self.skipped_reason is not None
 
 
+def _detect_runner(parts: list[str]) -> str | None:
+    """Identify the runner family from a parsed test command.
+
+    Returns one of `{'vitest', 'pytest', 'flutter', 'cargo', 'go', None}`.
+    Looks at `parts[0]`'s basename (works whether the token is a raw name
+    like `pytest` or a `shutil.which`-resolved path like
+    `C:\\Python\\Scripts\\pytest.exe`), then peeks at `parts[1]` for
+    multi-tool hosts (`npx`) and subcommand-style tools
+    (`flutter`/`cargo`/`go`).
+    """
+    if not parts:
+        return None
+    head = Path(parts[0]).stem.lower()
+    rest = [p.lower() for p in parts[1:]]
+    if head == "npx" and rest and rest[0] == "vitest":
+        return "vitest"
+    if head == "vitest":
+        return "vitest"
+    if head == "pytest" or head == "py.test":
+        return "pytest"
+    if head == "flutter" and rest and rest[0] == "test":
+        return "flutter"
+    if head == "cargo" and rest and rest[0] == "test":
+        return "cargo"
+    if head == "go" and rest and rest[0] == "test":
+        return "go"
+    return None
+
+
+def _apply_scope(parts: list[str], scope: str | None) -> list[str]:
+    """Append a per-task scope path to the test command when the runner
+    supports positional path filtering.
+
+    Supported: `vitest` (positional path + `--passWithNoTests` so a
+    scope matching zero test files exits 0 instead of 1), `pytest`
+    (positional path), `flutter test` (positional path).
+
+    Unsupported (legacy workspace-wide behavior preserved): `cargo test`
+    (package-name flag, not path), `go test ./...` (replace pattern, not
+    append). Tracked as follow-up item 39b' in tespit.md — adding
+    per-runner adapters there isn't on the M2 critical path.
+
+    A `None` or empty `scope` is a no-op — kept so callers without a
+    `TaskSpec` (scripts, ad-hoc CLI use) still get the legacy
+    workspace-wide command.
+    """
+    if not scope:
+        return parts
+    runner = _detect_runner(parts)
+    if runner == "vitest":
+        out = list(parts)
+        out.append(scope)
+        if "--passWithNoTests" not in out:
+            out.append("--passWithNoTests")
+        return out
+    if runner in {"pytest", "flutter"}:
+        return [*parts, scope]
+    return parts
+
+
 def configured_plan(workspace: Path | None = None) -> TestPlan | None:
     if os.getenv("AI_FACTORY_TESTS_ENABLED", "true").lower() == "false":
         return None
@@ -65,6 +146,7 @@ def configured_plan(workspace: Path | None = None) -> TestPlan | None:
     parts = shlex.split(cmd)
     if not parts:
         return None
+    parts[0] = _resolve_binary(parts[0])
     return TestPlan(parts, f"{rationale_source}={cmd}")
 
 
@@ -93,16 +175,29 @@ def _read_workspace_test_cmd(workspace: Path) -> str:
     return ""
 
 
-def run_tests(workspace: Path, timeout: float = 120.0) -> TestResult:
+def run_tests(
+    workspace: Path,
+    timeout: float = 120.0,
+    scope: str | None = None,
+) -> TestResult:
     plan = configured_plan(workspace)
     if plan is None:
         if os.getenv("AI_FACTORY_TESTS_ENABLED", "true").lower() == "false":
             return TestResult(None, "disabled via AI_FACTORY_TESTS_ENABLED=false", 0, "", "")
         return TestResult(None, "no test command configured (set AI_FACTORY_TEST_CMD)", 0, "", "")
 
+    scoped_cmd = _apply_scope(plan.cmd, scope)
+    scope_applied = scoped_cmd is not plan.cmd
+    runner_kind = _detect_runner(plan.cmd)
+    effective_plan = (
+        TestPlan(scoped_cmd, f"{plan.rationale} scope={scope}")
+        if scope_applied
+        else plan
+    )
+
     try:
         proc = subprocess.run(
-            plan.cmd,
+            scoped_cmd,
             cwd=str(workspace),
             capture_output=True,
             text=True,
@@ -111,18 +206,32 @@ def run_tests(workspace: Path, timeout: float = 120.0) -> TestResult:
             timeout=timeout,
         )
     except FileNotFoundError:
-        return TestResult(plan, f"runner '{plan.cmd[0]}' not on PATH", 127, "", "")
+        return TestResult(effective_plan, f"runner '{scoped_cmd[0]}' not on PATH", 127, "", "")
     except subprocess.TimeoutExpired as e:
         return TestResult(
-            plan, None, 124, _tail(e.stdout or "", 4000), f"timeout after {timeout}s"
+            effective_plan, None, 124, _tail(e.stdout or "", 4000), f"timeout after {timeout}s"
         )
 
+    exit_code = proc.returncode
+    stdout_tail = _tail(proc.stdout, 4000)
+    stderr_tail = _tail(proc.stderr, 4000)
+
+    # pytest exits 5 when no tests were collected. When we narrowed pytest
+    # to a per-task scope (39b), the absence of tests in that module is
+    # neutral, not failure. Only normalize when scope was actually applied
+    # — a workspace-wide pytest returning 5 is genuinely suspicious
+    # (the project has no tests at all).
+    if scope_applied and runner_kind == "pytest" and exit_code == 5:
+        exit_code = 0
+        note = "(test_runner: pytest exit 5 normalized — no tests collected under scope)"
+        stdout_tail = f"{stdout_tail}\n{note}" if stdout_tail else note
+
     return TestResult(
-        plan=plan,
+        plan=effective_plan,
         skipped_reason=None,
-        exit_code=proc.returncode,
-        stdout_tail=_tail(proc.stdout, 4000),
-        stderr_tail=_tail(proc.stderr, 4000),
+        exit_code=exit_code,
+        stdout_tail=stdout_tail,
+        stderr_tail=stderr_tail,
     )
 
 

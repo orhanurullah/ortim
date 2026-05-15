@@ -32,6 +32,7 @@ from runtime.executor.worker import WorkerOutput
 from runtime.llm import LLMClient
 from runtime.memory import MemoryLoader
 from runtime.orchestrator import TaskSpec
+from runtime.skills import Skill, format_skills_block
 
 
 CriterionStatus = Literal["pass", "fail", "partial", "unverifiable"]
@@ -156,12 +157,16 @@ class CodeReviewerAgent:
         rfc_text: str,
         project_id: str,
         test_result: TestResult | None = None,
+        active_skills: list[Skill] | None = None,
     ) -> ReviewVerdict:
         system_prompt = self.memory.load_agent_prompt("reviewer")
         principles = self.memory.load_l1_principles()
+        skills_block = format_skills_block(active_skills or [], audience="reviewer")
         full_system = (
             f"{system_prompt}\n\n## L1 Immutable Principles\n\n{principles}"
         )
+        if skills_block:
+            full_system = f"{full_system}\n\n{skills_block}"
 
         files_block = "\n\n".join(
             f"### {f.path} ({f.operation})\n```\n{f.content}\n```"
@@ -264,6 +269,7 @@ class CodeReviewerAgent:
                 suggestions=verdict.suggestions,
                 tests_passed=test_result.passed if test_result else None,
                 tests_skipped=test_result.skipped_reason if test_result else None,
+                active_skills=[s.name for s in (active_skills or [])],
                 **response.audit_fields(),
             )
             return verdict

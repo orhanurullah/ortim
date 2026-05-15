@@ -1,0 +1,102 @@
+{
+  "project_id": "1b9c9f9ca18b",
+  "records": {
+    "T-001": {
+      "task_id": "T-001",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-002": {
+      "task_id": "T-002",
+      "status": "DONE",
+      "attempts": 2,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-003": {
+      "task_id": "T-003",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-004": {
+      "task_id": "T-004",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-005": {
+      "task_id": "T-005",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider adding a more descriptive loading message or a spinner animation for better UX.",
+        "The ErrorBoundary could accept a fallback prop for custom error messages, but the current implementation satisfies the criterion."
+      ],
+      "last_error": null
+    },
+    "T-006": {
+      "task_id": "T-006",
+      "status": "DONE",
+      "attempts": 2,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-007": {
+      "task_id": "T-007",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-008": {
+      "task_id": "T-008",
+      "status": "DONE",
+      "attempts": 2,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider adding a PRAGMA foreign_keys = ON call in the production code path (not just tests) to ensure cascade works at runtime.",
+        "The function signatures take db as first parameter — consider wrapping in a class or factory for cleaner DI if the module grows."
+      ],
+      "last_error": null
+    },
+    "T-009": {
+      "task_id": "T-009",
+      "status": "AWAITING_HITL",
+      "attempts": 1,
+      "last_review_approved": false,
+      "last_review_reasons": [
+        "[unverifiable:test_infra] addTag with non-existent taskId or tagName throws an error (exit code 1 on test, stderr contains 'not found'): tests were SKIPPED for addTag — no test execution confirms runtime behavior. Code at task/api/task.service.ts:49-51 throws 'Task with id ... not found' for missing taskId, and getTagByName returns undefined for missing tagName (which auto-creates the tag instead of throwing). The criterion wording is checkable but requires test execution. (test runner unavailable — set AI_FACTORY_TEST_CMD)",
+        "[partial] getAllTasks returns tasks with a tags field (array of Tag objects) populated via LEFT JOIN: task/api/task.service.ts:24-29 getAllTasks loads tags via loadAllTaskTags() which uses INNER JOIN (not LEFT JOIN) on task_tags INNER JOIN tags. This means tasks with zero tags will have an empty array (correct), but the join is INNER not LEFT — functionally equivalent for this use case since tags always exist if referenced, but the criterion explicitly says LEFT JOIN. The Task interface at task/api/task.api.ts:7 includes tags: Tag[]. — code: `private loadAllTaskTags(): Record<string, Tag[]> {\n    const stmt = this.db.prepare(`\n      SELECT tt.task_id, tg.id, tg.name, tg.created_at\n      FROM task_tags tt\n      INNER JOIN tags tg ON tt.tag_id = tg.id\n    `);`",
+        "[unverifiable:test_infra] deleteTask cascades to remove rows from task_tags (verified by querying task_tags after delete): tests were SKIPPED for deleteTask cascade — no test execution confirms runtime behavior. Code at task/db.ts:37-39 creates task_tags with ON DELETE CASCADE, and task/repository.ts:82-85 deleteTask runs DELETE FROM tasks WHERE id = ?. The schema has CASCADE but no test verifies the cascade effect. (test runner unavailable — set AI_FACTORY_TEST_CMD)",
+        "[L1] task/api/task.service.ts imports from '../tagging/tagging' which is a cross-module import through an internal file path, not a barrel — violates typescript-module-boundaries skill",
+        "tests failed (exit 1); stderr tail: 39m () \u001b[33m=>\u001b[39m {\n    \u001b[90m 83| \u001b[39m      \u001b[35mawait\u001b[39m \u001b[34mexpect\u001b[39m(repo\u001b[33m.\u001b[39m\u001b[34mdeleteTask\u001b[39m(\u001b[32m'nonexistent-uuid'\u001b[39m))\u001b[33m.\u001b[39mrejects\u001b[33m.\u001b[39m\u001b[34mtoThro\u001b[39m…\n    \u001b[90m   | \u001b[39m                                                      \u001b[31m^\u001b[39m\n    \u001b[90m 84| \u001b[39m    })\u001b[33m;\u001b[39m\n    \u001b[90m 85| \u001b[39m  })\u001b[33m;\u001b[39m\n\n\u001b[31m\u001b[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯\u001b[22m\u001b[39m"
+      ],
+      "last_review_suggestions": [
+        "Change import { createTag, getTagByName, Tag } from '../tagging/tagging' to import from '../tagging' (barrel) if tagging module has an index.ts; otherwise create one.",
+        "Consider using LEFT JOIN instead of INNER JOIN in loadAllTaskTags to match the criterion wording exactly, though the behavior is functionally equivalent.",
+        "The 4 test failures in task/repository.test.ts are pre-existing (createTask empty title, createTask >500 chars, completeTask not found, deleteTask not found) — these are not related to the new tag methods but should be fixed to pass CI."
+      ],
+      "last_error": null
+    }
+  }
+}

@@ -32,7 +32,12 @@ from pathlib import Path
 from typing import Any
 
 from runtime.audit import AuditLogger
-from runtime.codebase import CodebaseSummary, read_related
+from runtime.architecture import LockedStack
+from runtime.codebase import (
+    CodebaseSummary,
+    collect_prior_outputs,
+    read_related,
+)
 from runtime.executor.git_ops import (
     GitOperationFailed,
     abandon_task_branch,
@@ -50,12 +55,19 @@ from runtime.executor.sandbox import normalize_relative, resolve_in_workspace
 from runtime.executor.security_reviewer import SecurityReviewerAgent, SecurityVerdict
 from runtime.executor.status import TaskStatus, TaskStatusFile
 from runtime.executor.test_reviewer import TestReviewerAgent, TestVerdict
+from runtime.codebase.prior_tasks import primary_scope
 from runtime.executor.test_runner import TestResult, run_tests
-from runtime.executor.worker import WorkerAgent, WorkerOutOfScope, WorkerOutput
+from runtime.executor.worker import (
+    WorkerAgent,
+    WorkerOutOfScope,
+    WorkerOutput,
+    WorkerSkillNotConsulted,
+)
 from runtime.hooks import HookResult, run_hook
 from runtime.llm import LLMClient
 from runtime.memory import MemoryLoader
-from runtime.orchestrator import TaskSpec
+from runtime.orchestrator import TaskDAG, TaskSpec
+from runtime.skills import Skill, load_all_skills, resolve_for_task
 
 
 @dataclass
@@ -108,6 +120,10 @@ def execute_task(
     reviewer_chain: ReviewerChain | None = None,
     codebase_summary: CodebaseSummary | None = None,
     app_class: str = "web",
+    locked_stack: LockedStack | None = None,
+    skills: list[Skill] | None = None,
+    tier: str | None = None,
+    dag: TaskDAG | None = None,
 ) -> ExecutionResult:
     """Run one task end-to-end. Mutates `status_file` in memory; the caller saves it.
 
@@ -173,6 +189,62 @@ def execute_task(
             )
             related_files = None
 
+    # M3: resolve skills for this task once and pass to both Worker
+    # and Reviewer so they see the same project-specific rule set.
+    worker_skills: list[Skill] = []
+    reviewer_skills: list[Skill] = []
+    if skills:
+        worker_skills = resolve_for_task(
+            skills=skills,
+            task=task,
+            tier=tier,
+            app_class=app_class,
+            locked_stack=locked_stack,
+            audience="worker",
+        )
+        reviewer_skills = resolve_for_task(
+            skills=skills,
+            task=task,
+            tier=tier,
+            app_class=app_class,
+            locked_stack=locked_stack,
+            audience="reviewer",
+        )
+        # Emit the resolved set so `ortim retro` can show which skills
+        # actually triggered for a given task. Empty lists are still
+        # logged — they prove the resolver ran and produced nothing,
+        # which is itself a useful operational signal.
+        audit.log(
+            "executor_skill_resolved",
+            project_id=project_id,
+            task_id=task.id,
+            worker_skills=[s.name for s in worker_skills],
+            reviewer_skills=[s.name for s in reviewer_skills],
+        )
+
+    # M4: cross-task export visibility for greenfield. Brownfield uses
+    # `related_files` (full bodies of in-scope files); greenfield gets
+    # signatures of every prior DONE module's exports so Worker can
+    # write correct imports across module boundaries.
+    prior_task_exports = None
+    if dag is not None and codebase_summary is None and status_file.records:
+        try:
+            modules = collect_prior_outputs(
+                workspace=task_workspace,
+                dag=dag,
+                status_file=status_file,
+                current_task_id=task.id,
+            )
+            prior_task_exports = modules or None
+        except Exception as e:
+            audit.log(
+                "executor_prior_outputs_failed",
+                project_id=project_id,
+                task_id=task.id,
+                error=str(e)[:300],
+            )
+            prior_task_exports = None
+
     worker = WorkerAgent(llm, memory, audit)
     try:
         output = worker.execute(
@@ -182,8 +254,10 @@ def execute_task(
             prior_reasons,
             related_files=related_files,
             app_class=app_class,
+            active_skills=worker_skills or None,
+            prior_task_exports=prior_task_exports,
         )
-    except (WorkerOutOfScope, ValueError) as e:
+    except (WorkerOutOfScope, WorkerSkillNotConsulted, ValueError) as e:
         err_text = str(e)[:300]
         record.last_error = err_text
         # Phase 0 / item 15: feed the sandbox or parse failure back into
@@ -191,17 +265,27 @@ def execute_task(
         # Without this, the auto-retry loop (item 7) reruns the Worker with
         # the same prompt and `prior_reasons=None`, producing the identical
         # violation verbatim — observed in `todo-greenfield-3` T-002 across
-        # three attempts. The `[sandbox]` tag lets the Worker distinguish
-        # this from Reviewer rubric reasons.
-        record.last_review_reasons = [
-            f"[sandbox] Previous attempt failed before reaching review: "
-            f"{err_text}. Only emit files under "
-            f"module_scope='{task.module_scope}/'. To consume types or "
-            f"symbols from other modules, IMPORT them via the language's "
-            f"import mechanism (e.g. Go `import \"<pkg>\"`, TypeScript "
-            f"`import { ... } from \"<path>\"`); do NOT re-create files "
-            f"that already exist in other modules."
-        ]
+        # three attempts. The `[sandbox]` and `[skill]` tags let the Worker
+        # distinguish these from Reviewer rubric reasons.
+        if isinstance(e, WorkerSkillNotConsulted):
+            record.last_review_reasons = [
+                f"[skill] Previous attempt failed the skill-acknowledgement "
+                f"check: {err_text}. The `## Active Skills` block lists "
+                f"HARD rules — read each one and list every skill name "
+                f"verbatim in your output's `skills_consulted` field. "
+                f"Skipping this is treated as evidence the skill block "
+                f"was not consulted."
+            ]
+        else:
+            record.last_review_reasons = [
+                f"[sandbox] Previous attempt failed before reaching review: "
+                f"{err_text}. Only emit files under "
+                f"module_scope='{task.module_scope}/'. To consume types or "
+                f"symbols from other modules, IMPORT them via the language's "
+                f"import mechanism (e.g. Go `import \"<pkg>\"`, TypeScript "
+                f"`import { ... } from \"<path>\"`); do NOT re-create files "
+                f"that already exist in other modules."
+            ]
         if use_git and branch:
             _try_cleanup_branch(workspace, task.id, use_worktree)
         record.status = (
@@ -223,7 +307,7 @@ def execute_task(
 
     test_result: TestResult | None = None
     if output.files:
-        test_result = run_tests(task_workspace)
+        test_result = run_tests(task_workspace, scope=primary_scope(task))
         audit.log(
             "executor_tests",
             project_id=project_id,
@@ -235,7 +319,14 @@ def execute_task(
         )
 
     code_reviewer = CodeReviewerAgent(reviewer_llm or llm, memory, audit)
-    verdict = code_reviewer.review(task, output, rfc_text, project_id, test_result)
+    verdict = code_reviewer.review(
+        task,
+        output,
+        rfc_text,
+        project_id,
+        test_result,
+        active_skills=reviewer_skills or None,
+    )
 
     record.last_review_approved = verdict.approved
     record.last_review_reasons = list(verdict.reasons)

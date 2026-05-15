@@ -55,3 +55,9 @@ warn_unused_configs = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# E2E baselines pin the shape and key content of frozen real-LLM artifacts.
+# Default-deselected to keep the fast suite at <30s; opt-in with `-m e2e`.
+addopts = ["-m", "not e2e"]
+markers = [
+    "e2e: regression tests against captured real-LLM artifacts (opt-in: pytest -m e2e)",
+]

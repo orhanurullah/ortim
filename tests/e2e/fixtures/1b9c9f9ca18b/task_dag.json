@@ -1,0 +1,497 @@
+{
+  "project_id": "1b9c9f9ca18b",
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Implement sql.js database initialization and persistence layer",
+      "description": "Create a shared module that initializes sql.js with an in-memory SQLite database, persists the database to localStorage under key 'web-todo-proofpoint-v3-db', and provides a function to get the database instance. Handle WebAssembly load failure with a console.error and rethrow.",
+      "module_scope": "task",
+      "dependencies": [],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/db.ts exists and exports async function initDB(): Promise<SQL.Database>",
+        "initDB() creates a tasks table per RFC §5 schema on first call",
+        "initDB() persists database to localStorage key 'web-todo-proofpoint-v3-db' after each write (via a save function)",
+        "initDB() logs 'sql.js initialized' to console on success",
+        "initDB() logs 'sql.js failed to initialize' to console.error and throws on WebAssembly load failure"
+      ],
+      "rfc_section": "§5 Data Model — Schema SQL"
+    },
+    {
+      "id": "T-002",
+      "title": "Implement TaskRepository with CRUD operations",
+      "description": "Create a repository class that wraps sql.js database operations for the tasks table: createTask, getAllTasks, completeTask (toggle completed), deleteTask. Use uuid for id generation, zod for validation, and ISO 8601 strings for timestamps.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/repository.ts exists and exports class TaskRepository",
+        "TaskRepository constructor accepts SQL.Database instance",
+        "createTask(title: string): Promise<Task> inserts a row with id (uuid v4), title, completed=0, created_at, updated_at and returns the Task object",
+        "getAllTasks(): Promise<Task[]> returns all tasks ordered by created_at ASC",
+        "completeTask(id: string): Promise<Task> toggles completed (0→1, 1→0), updates updated_at, returns updated Task",
+        "deleteTask(id: string): Promise<void> deletes row by id",
+        "createTask rejects with error if title is empty or >500 chars",
+        "completeTask rejects with error if id not found",
+        "deleteTask rejects with error if id not found"
+      ],
+      "rfc_section": "§6 API Surface — ITaskAPI"
+    },
+    {
+      "id": "T-003",
+      "title": "Implement ITaskAPI interface and TaskService",
+      "description": "Create the public API interface ITaskAPI and a TaskService class that implements it by delegating to TaskRepository. The service is the module's public boundary.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-002"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts exists and exports interface ITaskAPI with methods: createTask(title: string): Promise<Task>, getAllTasks(): Promise<Task[]>, completeTask(id: string): Promise<Task>, deleteTask(id: string): Promise<void>",
+        "file task/api/task.service.ts exists and exports class TaskService implements ITaskAPI",
+        "TaskService constructor accepts TaskRepository instance",
+        "TaskService.createTask calls repository.createTask and returns result",
+        "TaskService.getAllTasks calls repository.getAllTasks and returns result",
+        "TaskService.completeTask calls repository.completeTask and returns result",
+        "TaskService.deleteTask calls repository.deleteTask and returns void"
+      ],
+      "rfc_section": "§6 API Surface — ITaskAPI"
+    },
+    {
+      "id": "T-004",
+      "title": "Implement React UI: task list display and add task form",
+      "description": "Create React components: App (root), TaskList (renders tasks), TaskItem (single task row with checkbox and delete button), AddTaskForm (input + submit button). Use useState for state, call TaskService methods on mount and on actions. Display tasks in order returned by getAllTasks.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-003"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file ui/App.tsx exists and exports default function App",
+        "App initializes TaskService with a TaskRepository backed by initDB() on mount",
+        "App renders AddTaskForm and TaskList",
+        "AddTaskForm has an input field and a submit button; on submit calls TaskService.createTask and refreshes list",
+        "TaskList renders a list of TaskItem components",
+        "TaskItem displays task title, a checkbox reflecting completed status, and a delete button",
+        "Checkbox click calls TaskService.completeTask and refreshes list",
+        "Delete button click calls TaskService.deleteTask and refreshes list",
+        "On mount, App calls TaskService.getAllTasks and renders the list"
+      ],
+      "rfc_section": "§7 Module Breakdown — ui"
+    },
+    {
+      "id": "T-005",
+      "title": "Add error boundary and loading state to UI",
+      "description": "Wrap the App component in an error boundary that catches runtime errors and displays a user-friendly message. Show a loading indicator while sql.js initializes.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-004"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file ui/ErrorBoundary.tsx exists and exports class ErrorBoundary",
+        "ErrorBoundary renders children normally when no error",
+        "ErrorBoundary renders 'Something went wrong. Please refresh the page.' when an error is caught",
+        "App shows a loading message (e.g., 'Loading...') while initDB() is pending",
+        "After initDB() resolves, App renders normally"
+      ],
+      "rfc_section": "§8 Cross-Cutting Concerns — Error handling"
+    },
+    {
+      "id": "T-006",
+      "title": "Add task count warning at 1000 tasks",
+      "description": "In the UI, when the number of tasks reaches or exceeds 1000, display a warning banner: 'You have over 1000 tasks. Consider exporting or deleting old tasks to avoid data loss.'",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-004"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "When getAllTasks returns 1000 or more tasks, a warning banner with text 'You have over 1000 tasks. Consider exporting or deleting old tasks to avoid data loss.' is visible in the DOM",
+        "When getAllTasks returns fewer than 1000 tasks, the warning banner is not present in the DOM"
+      ],
+      "rfc_section": "§9 Risks — localStorage quota exceeded"
+    },
+    {
+      "id": "T-007",
+      "title": "Add tags column to tasks table via ALTER TABLE migration",
+      "description": "In the task module's DB initialization, add a migration check: run PRAGMA table_info(tasks) to see if tags column exists; if not, execute ALTER TABLE tasks ADD COLUMN tags TEXT NOT NULL DEFAULT ''. This runs on every page load before any query.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file task/db.ts contains a function that checks PRAGMA table_info(tasks) and conditionally runs ALTER TABLE",
+        "stdout of a test that initializes DB, runs migration, then inserts a task and reads it back shows tags field is ''",
+        "stdout of a test that initializes DB, runs migration twice (second run is no-op) shows no error and tags column exists"
+      ],
+      "rfc_section": "Extension 1 — Data Model (delta)"
+    },
+    {
+      "id": "T-008",
+      "title": "Extend TaskSchema zod validation to include tags field",
+      "description": "Update the existing TaskSchema in task/domain/task.schema.ts to add tags: z.string().default(''). Ensure existing validation for id, title, completed, created_at, updated_at remains unchanged.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file task/domain/task.schema.ts exports TaskSchema that validates an object with tags field as string",
+        "stdout of a test that validates { id: '550e8400-e29b-41d4-a716-446655440000', title: 'test', completed: false, created_at: '2024-01-01T00:00:00.000Z', updated_at: '2024-01-01T00:00:00.000Z', tags: 'work,urgent' } passes",
+        "stdout of a test that validates same object without tags field passes (defaults to '')",
+        "stdout of a test that validates same object with tags: 123 fails (not a string)"
+      ],
+      "rfc_section": "Extension 1 — Data Model (delta)"
+    },
+    {
+      "id": "T-009",
+      "title": "Implement addTag method on TaskService and ITaskAPI",
+      "description": "Add addTag(taskId: string, tag: string): Promise<Task> to the TaskService and ITaskAPI. The method reads the current task, appends the tag (comma-separated, trimmed, no duplicates), updates updated_at, and writes back. If the task does not exist, throw an error. If the tag is empty after trim, throw an error. If the tag already exists in the comma-separated list, return the task unchanged (no duplicate).",
+      "module_scope": "task",
+      "dependencies": [
+        "T-007",
+        "T-008"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts exports ITaskAPI with addTag method signature",
+        "file task/domain/task.service.ts exports TaskService with addTag method",
+        "stdout of integration test: create a task, addTag('work'), read task back — tags field is 'work'",
+        "stdout of integration test: addTag twice with same tag — tags field is 'work' (no duplicate)",
+        "stdout of integration test: addTag with leading/trailing spaces — tag is trimmed, e.g. addTag('  urgent  ') results in tags 'work,urgent'",
+        "stdout of integration test: addTag on non-existent task throws error with message containing 'not found'",
+        "stdout of integration test: addTag with empty string after trim throws error"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-010",
+      "title": "Implement removeTag method on TaskService and ITaskAPI",
+      "description": "Add removeTag(taskId: string, tag: string): Promise<Task> to the TaskService and ITaskAPI. The method reads the current task, removes the specified tag from the comma-separated list (case-sensitive, trimmed), updates updated_at, and writes back. If the task does not exist, throw an error. If the tag is not found in the list, return the task unchanged.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-007",
+        "T-008"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts exports ITaskAPI with removeTag method signature",
+        "file task/domain/task.service.ts exports TaskService with removeTag method",
+        "stdout of integration test: create task with tags 'work,urgent', removeTag('urgent'), read back — tags field is 'work'",
+        "stdout of integration test: removeTag on non-existent task throws error with message containing 'not found'",
+        "stdout of integration test: removeTag with tag not in list returns task unchanged",
+        "stdout of integration test: removeTag removes only the exact tag (case-sensitive) — e.g. tags 'Work,urgent', removeTag('work') leaves 'Work,urgent' unchanged"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-011",
+      "title": "Implement getTasksByTags method on TaskService and ITaskAPI",
+      "description": "Add getTasksByTags(tags: string[], logic: 'AND' | 'OR'): Promise<Task[]> to the TaskService and ITaskAPI. The method reads all tasks, filters by the given tags: for AND logic, a task must have all specified tags; for OR logic, a task must have at least one. Tags are compared case-sensitively after trim. Empty tags array returns all tasks. Return tasks ordered by created_at ascending.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-007",
+        "T-008"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts exports ITaskAPI with getTasksByTags method signature",
+        "file task/domain/task.service.ts exports TaskService with getTasksByTags method",
+        "stdout of integration test: create tasks with tags 'work', 'urgent', 'work,urgent'; getTasksByTags(['work'], 'OR') returns 2 tasks (work and work,urgent)",
+        "stdout of integration test: getTasksByTags(['work', 'urgent'], 'AND') returns 1 task (work,urgent)",
+        "stdout of integration test: getTasksByTags([], 'OR') returns all tasks",
+        "stdout of integration test: getTasksByTags(['nonexistent'], 'OR') returns empty array",
+        "stdout of integration test: results are ordered by created_at ascending"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-012",
+      "title": "Implement TagInput React component",
+      "description": "Create a TagInput component that allows the user to type a tag name and add it to a task. The component renders an input field and an 'Add' button. On submit, it calls the provided onAdd(tag: string) callback. The input is cleared after successful add. The component validates that the tag is non-empty after trim and does not contain commas (show an inline error message if invalid).",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-009"
+      ],
+      "estimated_tokens": 5000,
+      "acceptance_criteria": [
+        "file ui/components/TagInput.tsx exports a React component TagInput",
+        "stdout of component test: typing 'work' and clicking Add calls onAdd with 'work'",
+        "stdout of component test: clicking Add with empty input does not call onAdd and shows error message containing 'cannot be empty'",
+        "stdout of component test: typing 'work,urgent' and clicking Add shows error message containing 'commas' and does not call onAdd",
+        "stdout of component test: after successful add, input field is cleared"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-013",
+      "title": "Implement TagBadge React component",
+      "description": "Create a TagBadge component that renders a single tag as a small pill/badge with a remove button (X). The component accepts props: tag: string, onRemove: (tag: string) => void. Clicking the remove button calls onRemove with the tag name.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-010"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file ui/components/TagBadge.tsx exports a React component TagBadge",
+        "stdout of component test: renders tag text 'work' in the badge",
+        "stdout of component test: clicking the X button calls onRemove with 'work'"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-014",
+      "title": "Implement TagFilterBar React component",
+      "description": "Create a TagFilterBar component that displays a list of unique tags (from all tasks) as clickable chips. Selected chips are highlighted. The component accepts props: allTags: string[], selectedTags: string[], onToggle: (tag: string) => void, logic: 'AND' | 'OR', onLogicChange: (logic: 'AND' | 'OR') => void. Clicking a chip toggles its selection. A toggle button switches between AND/OR mode.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-011"
+      ],
+      "estimated_tokens": 5000,
+      "acceptance_criteria": [
+        "file ui/components/TagFilterBar.tsx exports a React component TagFilterBar",
+        "stdout of component test: renders all tags from allTags prop as clickable chips",
+        "stdout of component test: clicking an unselected chip calls onToggle with that tag",
+        "stdout of component test: selected chips have a CSS class 'selected' (or equivalent visual indicator)",
+        "stdout of component test: clicking the logic toggle button calls onLogicChange with the opposite logic value"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-015",
+      "title": "Integrate tag UI into main task list view",
+      "description": "Update the main task list view (likely App.tsx or a TaskList component) to: (1) show TagBadge components for each task's tags, (2) include a TagInput below each task to add tags, (3) include a TagFilterBar above the task list, (4) filter displayed tasks based on selected tags and logic mode. When a tag is removed from a task via TagBadge, call removeTag. When a tag is added via TagInput, call addTag. When the filter changes, call getTasksByTags and update the displayed list.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-012",
+        "T-013",
+        "T-014"
+      ],
+      "estimated_tokens": 15000,
+      "acceptance_criteria": [
+        "file ui/App.tsx (or equivalent main component) imports and uses TagInput, TagBadge, TagFilterBar",
+        "stdout of integration test: create a task, add tag 'work' via TagInput, task appears with TagBadge showing 'work'",
+        "stdout of integration test: click remove on TagBadge, tag disappears from task display",
+        "stdout of integration test: select a tag in TagFilterBar, only tasks with that tag are displayed",
+        "stdout of integration test: switch filter logic to AND, select two tags, only tasks with both tags are displayed"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta)"
+    },
+    {
+      "id": "T-016",
+      "title": "Write integration tests for task tagging API",
+      "description": "Create a test file task/tagging.test.ts that tests addTag, removeTag, and getTasksByTags against a real sql.js in-memory database. Cover edge cases: empty tags, duplicate tags, non-existent task, case sensitivity, AND/OR logic with multiple tasks, empty tags array, tags with leading/trailing spaces. Ensure existing task CRUD tests remain green.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-009",
+        "T-010",
+        "T-011"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/tagging.test.ts exists and contains at least 10 test cases",
+        "stdout of `npx vitest run task/tagging.test.ts` shows all tests passing",
+        "stdout of `npx vitest run` shows all existing tests still passing (no regressions)"
+      ],
+      "rfc_section": "Extension 1 — Test Strategy (delta)"
+    }
+  ],
+  "extensions": [
+    {
+      "cycle": 1,
+      "feature_title": "Task Tagging",
+      "new_tasks": [
+        {
+          "id": "T-007",
+          "title": "Add tags column to tasks table via ALTER TABLE migration",
+          "description": "In the task module's DB initialization, add a migration check: run PRAGMA table_info(tasks) to see if tags column exists; if not, execute ALTER TABLE tasks ADD COLUMN tags TEXT NOT NULL DEFAULT ''. This runs on every page load before any query.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-001"
+          ],
+          "estimated_tokens": 3000,
+          "acceptance_criteria": [
+            "file task/db.ts contains a function that checks PRAGMA table_info(tasks) and conditionally runs ALTER TABLE",
+            "stdout of a test that initializes DB, runs migration, then inserts a task and reads it back shows tags field is ''",
+            "stdout of a test that initializes DB, runs migration twice (second run is no-op) shows no error and tags column exists"
+          ],
+          "rfc_section": "Extension 1 — Data Model (delta)"
+        },
+        {
+          "id": "T-008",
+          "title": "Extend TaskSchema zod validation to include tags field",
+          "description": "Update the existing TaskSchema in task/domain/task.schema.ts to add tags: z.string().default(''). Ensure existing validation for id, title, completed, created_at, updated_at remains unchanged.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-001"
+          ],
+          "estimated_tokens": 3000,
+          "acceptance_criteria": [
+            "file task/domain/task.schema.ts exports TaskSchema that validates an object with tags field as string",
+            "stdout of a test that validates { id: '550e8400-e29b-41d4-a716-446655440000', title: 'test', completed: false, created_at: '2024-01-01T00:00:00.000Z', updated_at: '2024-01-01T00:00:00.000Z', tags: 'work,urgent' } passes",
+            "stdout of a test that validates same object without tags field passes (defaults to '')",
+            "stdout of a test that validates same object with tags: 123 fails (not a string)"
+          ],
+          "rfc_section": "Extension 1 — Data Model (delta)"
+        },
+        {
+          "id": "T-009",
+          "title": "Implement addTag method on TaskService and ITaskAPI",
+          "description": "Add addTag(taskId: string, tag: string): Promise<Task> to the TaskService and ITaskAPI. The method reads the current task, appends the tag (comma-separated, trimmed, no duplicates), updates updated_at, and writes back. If the task does not exist, throw an error. If the tag is empty after trim, throw an error. If the tag already exists in the comma-separated list, return the task unchanged (no duplicate).",
+          "module_scope": "task",
+          "dependencies": [
+            "T-007",
+            "T-008"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file task/api/task.api.ts exports ITaskAPI with addTag method signature",
+            "file task/domain/task.service.ts exports TaskService with addTag method",
+            "stdout of integration test: create a task, addTag('work'), read task back — tags field is 'work'",
+            "stdout of integration test: addTag twice with same tag — tags field is 'work' (no duplicate)",
+            "stdout of integration test: addTag with leading/trailing spaces — tag is trimmed, e.g. addTag('  urgent  ') results in tags 'work,urgent'",
+            "stdout of integration test: addTag on non-existent task throws error with message containing 'not found'",
+            "stdout of integration test: addTag with empty string after trim throws error"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-010",
+          "title": "Implement removeTag method on TaskService and ITaskAPI",
+          "description": "Add removeTag(taskId: string, tag: string): Promise<Task> to the TaskService and ITaskAPI. The method reads the current task, removes the specified tag from the comma-separated list (case-sensitive, trimmed), updates updated_at, and writes back. If the task does not exist, throw an error. If the tag is not found in the list, return the task unchanged.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-007",
+            "T-008"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file task/api/task.api.ts exports ITaskAPI with removeTag method signature",
+            "file task/domain/task.service.ts exports TaskService with removeTag method",
+            "stdout of integration test: create task with tags 'work,urgent', removeTag('urgent'), read back — tags field is 'work'",
+            "stdout of integration test: removeTag on non-existent task throws error with message containing 'not found'",
+            "stdout of integration test: removeTag with tag not in list returns task unchanged",
+            "stdout of integration test: removeTag removes only the exact tag (case-sensitive) — e.g. tags 'Work,urgent', removeTag('work') leaves 'Work,urgent' unchanged"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-011",
+          "title": "Implement getTasksByTags method on TaskService and ITaskAPI",
+          "description": "Add getTasksByTags(tags: string[], logic: 'AND' | 'OR'): Promise<Task[]> to the TaskService and ITaskAPI. The method reads all tasks, filters by the given tags: for AND logic, a task must have all specified tags; for OR logic, a task must have at least one. Tags are compared case-sensitively after trim. Empty tags array returns all tasks. Return tasks ordered by created_at ascending.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-007",
+            "T-008"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file task/api/task.api.ts exports ITaskAPI with getTasksByTags method signature",
+            "file task/domain/task.service.ts exports TaskService with getTasksByTags method",
+            "stdout of integration test: create tasks with tags 'work', 'urgent', 'work,urgent'; getTasksByTags(['work'], 'OR') returns 2 tasks (work and work,urgent)",
+            "stdout of integration test: getTasksByTags(['work', 'urgent'], 'AND') returns 1 task (work,urgent)",
+            "stdout of integration test: getTasksByTags([], 'OR') returns all tasks",
+            "stdout of integration test: getTasksByTags(['nonexistent'], 'OR') returns empty array",
+            "stdout of integration test: results are ordered by created_at ascending"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-012",
+          "title": "Implement TagInput React component",
+          "description": "Create a TagInput component that allows the user to type a tag name and add it to a task. The component renders an input field and an 'Add' button. On submit, it calls the provided onAdd(tag: string) callback. The input is cleared after successful add. The component validates that the tag is non-empty after trim and does not contain commas (show an inline error message if invalid).",
+          "module_scope": "ui",
+          "dependencies": [
+            "T-009"
+          ],
+          "estimated_tokens": 5000,
+          "acceptance_criteria": [
+            "file ui/components/TagInput.tsx exports a React component TagInput",
+            "stdout of component test: typing 'work' and clicking Add calls onAdd with 'work'",
+            "stdout of component test: clicking Add with empty input does not call onAdd and shows error message containing 'cannot be empty'",
+            "stdout of component test: typing 'work,urgent' and clicking Add shows error message containing 'commas' and does not call onAdd",
+            "stdout of component test: after successful add, input field is cleared"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-013",
+          "title": "Implement TagBadge React component",
+          "description": "Create a TagBadge component that renders a single tag as a small pill/badge with a remove button (X). The component accepts props: tag: string, onRemove: (tag: string) => void. Clicking the remove button calls onRemove with the tag name.",
+          "module_scope": "ui",
+          "dependencies": [
+            "T-010"
+          ],
+          "estimated_tokens": 3000,
+          "acceptance_criteria": [
+            "file ui/components/TagBadge.tsx exports a React component TagBadge",
+            "stdout of component test: renders tag text 'work' in the badge",
+            "stdout of component test: clicking the X button calls onRemove with 'work'"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-014",
+          "title": "Implement TagFilterBar React component",
+          "description": "Create a TagFilterBar component that displays a list of unique tags (from all tasks) as clickable chips. Selected chips are highlighted. The component accepts props: allTags: string[], selectedTags: string[], onToggle: (tag: string) => void, logic: 'AND' | 'OR', onLogicChange: (logic: 'AND' | 'OR') => void. Clicking a chip toggles its selection. A toggle button switches between AND/OR mode.",
+          "module_scope": "ui",
+          "dependencies": [
+            "T-011"
+          ],
+          "estimated_tokens": 5000,
+          "acceptance_criteria": [
+            "file ui/components/TagFilterBar.tsx exports a React component TagFilterBar",
+            "stdout of component test: renders all tags from allTags prop as clickable chips",
+            "stdout of component test: clicking an unselected chip calls onToggle with that tag",
+            "stdout of component test: selected chips have a CSS class 'selected' (or equivalent visual indicator)",
+            "stdout of component test: clicking the logic toggle button calls onLogicChange with the opposite logic value"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-015",
+          "title": "Integrate tag UI into main task list view",
+          "description": "Update the main task list view (likely App.tsx or a TaskList component) to: (1) show TagBadge components for each task's tags, (2) include a TagInput below each task to add tags, (3) include a TagFilterBar above the task list, (4) filter displayed tasks based on selected tags and logic mode. When a tag is removed from a task via TagBadge, call removeTag. When a tag is added via TagInput, call addTag. When the filter changes, call getTasksByTags and update the displayed list.",
+          "module_scope": "ui",
+          "dependencies": [
+            "T-012",
+            "T-013",
+            "T-014"
+          ],
+          "estimated_tokens": 15000,
+          "acceptance_criteria": [
+            "file ui/App.tsx (or equivalent main component) imports and uses TagInput, TagBadge, TagFilterBar",
+            "stdout of integration test: create a task, add tag 'work' via TagInput, task appears with TagBadge showing 'work'",
+            "stdout of integration test: click remove on TagBadge, tag disappears from task display",
+            "stdout of integration test: select a tag in TagFilterBar, only tasks with that tag are displayed",
+            "stdout of integration test: switch filter logic to AND, select two tags, only tasks with both tags are displayed"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta)"
+        },
+        {
+          "id": "T-016",
+          "title": "Write integration tests for task tagging API",
+          "description": "Create a test file task/tagging.test.ts that tests addTag, removeTag, and getTasksByTags against a real sql.js in-memory database. Cover edge cases: empty tags, duplicate tags, non-existent task, case sensitivity, AND/OR logic with multiple tasks, empty tags array, tags with leading/trailing spaces. Ensure existing task CRUD tests remain green.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-009",
+            "T-010",
+            "T-011"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file task/tagging.test.ts exists and contains at least 10 test cases",
+            "stdout of `npx vitest run task/tagging.test.ts` shows all tests passing",
+            "stdout of `npx vitest run` shows all existing tests still passing (no regressions)"
+          ],
+          "rfc_section": "Extension 1 — Test Strategy (delta)"
+        }
+      ],
+      "starts_from_task_id": "T-007"
+    }
+  ]
+}

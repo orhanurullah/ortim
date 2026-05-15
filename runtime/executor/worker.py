@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from runtime.audit import AuditLogger
 from runtime.babel.intent import _strip_code_fences
+from runtime.codebase import ModuleExports, format_prior_outputs_block
 from runtime.executor.sandbox import (
     SandboxViolation,
     check_extension,
@@ -25,6 +26,7 @@ from runtime.executor.sandbox import (
 from runtime.llm import LLMClient
 from runtime.memory import MemoryLoader
 from runtime.orchestrator import TaskSpec
+from runtime.skills import Skill, format_skills_block
 
 
 class FileChange(BaseModel):
@@ -37,10 +39,26 @@ class WorkerOutput(BaseModel):
     task_id: str
     summary: str
     files: list[FileChange] = Field(default_factory=list)
+    # G-1 enforcement: every skill resolved for this task must appear here.
+    # Default empty list keeps callers without resolved skills (legacy unit
+    # tests, brownfield paths without an active skill set) parse-compatible.
+    skills_consulted: list[str] = Field(default_factory=list)
 
 
 class WorkerOutOfScope(Exception):
     """Worker emitted a path outside `module_scope` or with disallowed extension."""
+
+
+class WorkerSkillNotConsulted(Exception):
+    """Worker output omitted one or more resolved skills from `skills_consulted`.
+
+    The runner's auto-retry loop (Item 7 / Item 15a pattern) feeds the
+    missing skill list back through `prior_reasons`, tagged `[skill]`, so
+    the next attempt is forced to read the `## Active Skills` block. This
+    is acknowledgement-level enforcement — Reviewer remains the layer
+    that checks whether skills were actually *applied* (G-1 two-layer
+    defense: Worker acknowledges, Reviewer verifies).
+    """
 
 
 class WorkerAgent:
@@ -62,12 +80,20 @@ class WorkerAgent:
         prior_review_reasons: list[str] | None = None,
         related_files: dict[str, str] | None = None,
         app_class: str = "web",
+        active_skills: list[Skill] | None = None,
+        prior_task_exports: dict[str, ModuleExports] | None = None,
     ) -> WorkerOutput:
         system_prompt = self.memory.load_agent_prompt("worker")
         principles = self.memory.load_l1_principles()
+        skills_block = format_skills_block(active_skills or [], audience="worker")
+        prior_outputs_block = format_prior_outputs_block(prior_task_exports or {})
         full_system = (
             f"{system_prompt}\n\n## L1 Immutable Principles\n\n{principles}"
         )
+        if skills_block:
+            full_system = f"{full_system}\n\n{skills_block}"
+        if prior_outputs_block:
+            full_system = f"{full_system}\n\n{prior_outputs_block}"
 
         retry_block = ""
         if prior_review_reasons:
@@ -94,12 +120,25 @@ class WorkerAgent:
             )
             related_block = "\n".join(parts) + "\n"
 
+        skill_directive = ""
+        if active_skills:
+            names = ", ".join(f"`{s.name}`" for s in active_skills)
+            skill_directive = (
+                f"Active skills resolved for this task: {names}. Apply each "
+                "one as described in the `## Active Skills` system block, "
+                "then list every skill name in the output's "
+                "`skills_consulted` field. Omitting a resolved skill from "
+                "`skills_consulted` causes a retry — the runtime treats it "
+                "as evidence you did not read the skill block.\n\n"
+            )
+
         user_prompt = (
             f"Project ID: {project_id}\n\n"
             f"Task spec:\n{task.model_dump_json(indent=2)}\n\n"
             f"RFC section ({task.rfc_section}):\n```\n{rfc_text}\n```\n\n"
             f"{related_block}"
             f"{retry_block}"
+            f"{skill_directive}"
             f"App class: {app_class} (sandbox enforces this set of file extensions)\n\n"
             "Allowed file types: source code (Python/TS/Go/Rust/...), "
             "config (json/yaml/toml/...), docs (md/rst/txt), schemas "
@@ -135,6 +174,31 @@ class WorkerAgent:
             )
             raise
 
+        # G-1 enforcement: acknowledge every resolved skill BEFORE sandbox
+        # checks. Sandbox failures are about WHAT was emitted; the skill
+        # gate is about whether the Worker even looked at the rule set.
+        # Running it first lets us emit a clean signal in `prior_reasons`
+        # — otherwise a Worker that ignored skills AND wrote out-of-scope
+        # files would only learn about the sandbox issue on retry, never
+        # the skill issue.
+        if active_skills:
+            expected = {s.name for s in active_skills}
+            consulted = {n.strip() for n in output.skills_consulted if n.strip()}
+            missing = sorted(expected - consulted)
+            if missing:
+                self.audit.log(
+                    "worker_skill_check_failed",
+                    project_id=project_id,
+                    task_id=task.id,
+                    expected_skills=sorted(expected),
+                    consulted_skills=sorted(consulted),
+                    missing_skills=missing,
+                    **response.audit_fields(),
+                )
+                raise WorkerSkillNotConsulted(
+                    f"missing skills in skills_consulted: {missing}"
+                )
+
         violations: list[str] = []
         for f in output.files:
             try:
@@ -160,6 +224,8 @@ class WorkerAgent:
             task_id=task.id,
             file_count=len(output.files),
             attempt_after_review=bool(prior_review_reasons),
+            active_skills=[s.name for s in (active_skills or [])],
+            prior_task_modules=sorted((prior_task_exports or {}).keys()),
             **response.audit_fields(),
         )
         return output

@@ -1,0 +1,275 @@
+{
+  "project_id": "proofpoint48",
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Implement sql.js database initialization and persistence layer",
+      "description": "Create a shared module that initializes sql.js with an in-memory SQLite database, persists the database to localStorage under key 'web-todo-proofpoint-v3-db', and provides a function to get the database instance. Handle WebAssembly load failure with a console.error and rethrow.",
+      "module_scope": "task",
+      "dependencies": [],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/db.ts exists and exports async function initDB(): Promise<SQL.Database>",
+        "initDB() creates a tasks table per RFC §5 schema on first call",
+        "initDB() persists database to localStorage key 'web-todo-proofpoint-v3-db' after each write (via a save function)",
+        "initDB() logs 'sql.js initialized' to console on success",
+        "initDB() logs 'sql.js failed to initialize' to console.error and throws on WebAssembly load failure"
+      ],
+      "rfc_section": "§5 Data Model — Schema SQL"
+    },
+    {
+      "id": "T-002",
+      "title": "Implement TaskRepository with CRUD operations",
+      "description": "Create a repository class that wraps sql.js database operations for the tasks table: createTask, getAllTasks, completeTask (toggle completed), deleteTask. Use uuid for id generation, zod for validation, and ISO 8601 strings for timestamps.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/repository.ts exists and exports class TaskRepository",
+        "TaskRepository constructor accepts SQL.Database instance",
+        "createTask(title: string): Promise<Task> inserts a row with id (uuid v4), title, completed=0, created_at, updated_at and returns the Task object",
+        "getAllTasks(): Promise<Task[]> returns all tasks ordered by created_at ASC",
+        "completeTask(id: string): Promise<Task> toggles completed (0→1, 1→0), updates updated_at, returns updated Task",
+        "deleteTask(id: string): Promise<void> deletes row by id",
+        "createTask rejects with error if title is empty or >500 chars",
+        "completeTask rejects with error if id not found",
+        "deleteTask rejects with error if id not found"
+      ],
+      "rfc_section": "§6 API Surface — ITaskAPI"
+    },
+    {
+      "id": "T-003",
+      "title": "Implement ITaskAPI interface and TaskService",
+      "description": "Create the public API interface ITaskAPI and a TaskService class that implements it by delegating to TaskRepository. The service is the module's public boundary.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-002"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts exists and exports interface ITaskAPI with methods: createTask(title: string): Promise<Task>, getAllTasks(): Promise<Task[]>, completeTask(id: string): Promise<Task>, deleteTask(id: string): Promise<void>",
+        "file task/api/task.service.ts exists and exports class TaskService implements ITaskAPI",
+        "TaskService constructor accepts TaskRepository instance",
+        "TaskService.createTask calls repository.createTask and returns result",
+        "TaskService.getAllTasks calls repository.getAllTasks and returns result",
+        "TaskService.completeTask calls repository.completeTask and returns result",
+        "TaskService.deleteTask calls repository.deleteTask and returns void"
+      ],
+      "rfc_section": "§6 API Surface — ITaskAPI"
+    },
+    {
+      "id": "T-004",
+      "title": "Implement React UI: task list display and add task form",
+      "description": "Create React components: App (root), TaskList (renders tasks), TaskItem (single task row with checkbox and delete button), AddTaskForm (input + submit button). Use useState for state, call TaskService methods on mount and on actions. Display tasks in order returned by getAllTasks.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-003"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file ui/App.tsx exists and exports default function App",
+        "App initializes TaskService with a TaskRepository backed by initDB() on mount",
+        "App renders AddTaskForm and TaskList",
+        "AddTaskForm has an input field and a submit button; on submit calls TaskService.createTask and refreshes list",
+        "TaskList renders a list of TaskItem components",
+        "TaskItem displays task title, a checkbox reflecting completed status, and a delete button",
+        "Checkbox click calls TaskService.completeTask and refreshes list",
+        "Delete button click calls TaskService.deleteTask and refreshes list",
+        "On mount, App calls TaskService.getAllTasks and renders the list"
+      ],
+      "rfc_section": "§7 Module Breakdown — ui"
+    },
+    {
+      "id": "T-005",
+      "title": "Add error boundary and loading state to UI",
+      "description": "Wrap the App component in an error boundary that catches runtime errors and displays a user-friendly message. Show a loading indicator while sql.js initializes.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-004"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "file ui/ErrorBoundary.tsx exists and exports class ErrorBoundary",
+        "ErrorBoundary renders children normally when no error",
+        "ErrorBoundary renders 'Something went wrong. Please refresh the page.' when an error is caught",
+        "App shows a loading message (e.g., 'Loading...') while initDB() is pending",
+        "After initDB() resolves, App renders normally"
+      ],
+      "rfc_section": "§8 Cross-Cutting Concerns — Error handling"
+    },
+    {
+      "id": "T-006",
+      "title": "Add task count warning at 1000 tasks",
+      "description": "In the UI, when the number of tasks reaches or exceeds 1000, display a warning banner: 'You have over 1000 tasks. Consider exporting or deleting old tasks to avoid data loss.'",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-004"
+      ],
+      "estimated_tokens": 3000,
+      "acceptance_criteria": [
+        "When getAllTasks returns 1000 or more tasks, a warning banner with text 'You have over 1000 tasks. Consider exporting or deleting old tasks to avoid data loss.' is visible in the DOM",
+        "When getAllTasks returns fewer than 1000 tasks, the warning banner is not present in the DOM"
+      ],
+      "rfc_section": "§9 Risks — localStorage quota exceeded"
+    },
+    {
+      "id": "T-007",
+      "title": "Add tags and task_tags tables to sql.js schema",
+      "description": "Extend the existing sql.js initialization to create the `tags` and `task_tags` tables per the delta schema. Enable foreign keys via PRAGMA. Bump schema version from 1 to 2.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-001"
+      ],
+      "estimated_tokens": 5000,
+      "acceptance_criteria": [
+        "file task/db.ts (or equivalent schema init file) contains CREATE TABLE IF NOT EXISTS tags (...) with columns id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE CHECK(length(name) <= 50), created_at TEXT NOT NULL",
+        "file task/db.ts contains CREATE TABLE IF NOT EXISTS task_tags (...) with columns task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (task_id, tag_id)",
+        "file task/db.ts executes PRAGMA foreign_keys = ON before any DDL",
+        "schema version stored in localStorage is incremented from 1 to 2 after migration runs"
+      ],
+      "rfc_section": "Extension 1 — Data Model (delta)"
+    },
+    {
+      "id": "T-008",
+      "title": "Implement tagging module CRUD (Tag entity, createTag, getAllTags, deleteTag, getTagByName)",
+      "description": "Create the new `tagging` module with Tag entity, zod validation, and CRUD operations. Tag names are normalized to lowercase on creation. Expose createTag, getAllTags, deleteTag, getTagByName.",
+      "module_scope": "tagging",
+      "dependencies": [
+        "T-007"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file tagging/tagging.ts exports createTag(name: string): Tag that inserts into tags table and returns a Tag object with id, name, created_at",
+        "createTag with duplicate name (case-insensitive) throws or returns error (exit code 0 on test, stderr contains 'UNIQUE constraint failed')",
+        "file tagging/tagging.ts exports getAllTags(): Tag[] that returns all tags ordered by created_at ascending",
+        "file tagging/tagging.ts exports deleteTag(id: string): void that removes the tag and cascades to task_tags",
+        "file tagging/tagging.ts exports getTagByName(name: string): Tag | undefined that returns the tag with matching name (case-insensitive) or undefined",
+        "TagSchema validates name min 1 max 50 chars, id as UUID, created_at as ISO datetime"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta) — tagging"
+    },
+    {
+      "id": "T-009",
+      "title": "Extend task module with addTag, removeTag, getTasksByTag methods",
+      "description": "Add three new methods to the existing ITaskAPI interface and implementation: addTag(taskId, tagName) inserts into task_tags, removeTag(taskId, tagName) deletes from task_tags, getTasksByTag(tagName) returns tasks with that tag via JOIN. Eagerly load tags in getAllTasks via LEFT JOIN.",
+      "module_scope": "task",
+      "dependencies": [
+        "T-007",
+        "T-008"
+      ],
+      "estimated_tokens": 7000,
+      "acceptance_criteria": [
+        "file task/api/task.api.ts (or equivalent) exports addTag(taskId: string, tagName: string): Promise<Task> that inserts a row into task_tags and returns the updated Task",
+        "addTag with non-existent taskId or tagName throws an error (exit code 1 on test, stderr contains 'not found')",
+        "file task/api/task.api.ts exports removeTag(taskId: string, tagName: string): Promise<Task> that deletes the row from task_tags and returns the updated Task",
+        "file task/api/task.api.ts exports getTasksByTag(tagName: string): Promise<Task[]> that returns tasks with that tag via JOIN on task_tags and tags, ordered by created_at ascending",
+        "getAllTasks returns tasks with a tags field (array of Tag objects) populated via LEFT JOIN",
+        "deleteTask cascades to remove rows from task_tags (verified by querying task_tags after delete)"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta) — task"
+    },
+    {
+      "id": "T-010",
+      "title": "Add UI components for tag display, tag input, and tag filter",
+      "description": "Create React components: TagBadge (shows tag name), TagInput (autocomplete from existing tags, allows creating new tag on-the-fly), TagFilter (dropdown or list to filter tasks by tag). Wire into existing task list UI.",
+      "module_scope": "ui",
+      "dependencies": [
+        "T-009"
+      ],
+      "estimated_tokens": 10000,
+      "acceptance_criteria": [
+        "file ui/components/TagBadge.tsx renders a span with tag name text and a remove button (X) that calls removeTag",
+        "file ui/components/TagInput.tsx renders an input that shows autocomplete suggestions from getAllTags, and on submit calls addTag or createTag+addTag",
+        "file ui/components/TagFilter.tsx renders a dropdown of all tags; selecting a tag filters the task list to only tasks with that tag (calls getTasksByTag)",
+        "task list items display TagBadge components for each tag on the task",
+        "adding a tag via TagInput updates the task list without full page reload"
+      ],
+      "rfc_section": "Extension 1 — Module Breakdown (delta) — ui"
+    }
+  ],
+  "extensions": [
+    {
+      "cycle": 1,
+      "feature_title": "Task Tagging",
+      "new_tasks": [
+        {
+          "id": "T-007",
+          "title": "Add tags and task_tags tables to sql.js schema",
+          "description": "Extend the existing sql.js initialization to create the `tags` and `task_tags` tables per the delta schema. Enable foreign keys via PRAGMA. Bump schema version from 1 to 2.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-001"
+          ],
+          "estimated_tokens": 5000,
+          "acceptance_criteria": [
+            "file task/db.ts (or equivalent schema init file) contains CREATE TABLE IF NOT EXISTS tags (...) with columns id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE CHECK(length(name) <= 50), created_at TEXT NOT NULL",
+            "file task/db.ts contains CREATE TABLE IF NOT EXISTS task_tags (...) with columns task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE, PRIMARY KEY (task_id, tag_id)",
+            "file task/db.ts executes PRAGMA foreign_keys = ON before any DDL",
+            "schema version stored in localStorage is incremented from 1 to 2 after migration runs"
+          ],
+          "rfc_section": "Extension 1 — Data Model (delta)"
+        },
+        {
+          "id": "T-008",
+          "title": "Implement tagging module CRUD (Tag entity, createTag, getAllTags, deleteTag, getTagByName)",
+          "description": "Create the new `tagging` module with Tag entity, zod validation, and CRUD operations. Tag names are normalized to lowercase on creation. Expose createTag, getAllTags, deleteTag, getTagByName.",
+          "module_scope": "tagging",
+          "dependencies": [
+            "T-007"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file tagging/tagging.ts exports createTag(name: string): Tag that inserts into tags table and returns a Tag object with id, name, created_at",
+            "createTag with duplicate name (case-insensitive) throws or returns error (exit code 0 on test, stderr contains 'UNIQUE constraint failed')",
+            "file tagging/tagging.ts exports getAllTags(): Tag[] that returns all tags ordered by created_at ascending",
+            "file tagging/tagging.ts exports deleteTag(id: string): void that removes the tag and cascades to task_tags",
+            "file tagging/tagging.ts exports getTagByName(name: string): Tag | undefined that returns the tag with matching name (case-insensitive) or undefined",
+            "TagSchema validates name min 1 max 50 chars, id as UUID, created_at as ISO datetime"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta) — tagging"
+        },
+        {
+          "id": "T-009",
+          "title": "Extend task module with addTag, removeTag, getTasksByTag methods",
+          "description": "Add three new methods to the existing ITaskAPI interface and implementation: addTag(taskId, tagName) inserts into task_tags, removeTag(taskId, tagName) deletes from task_tags, getTasksByTag(tagName) returns tasks with that tag via JOIN. Eagerly load tags in getAllTasks via LEFT JOIN.",
+          "module_scope": "task",
+          "dependencies": [
+            "T-007",
+            "T-008"
+          ],
+          "estimated_tokens": 7000,
+          "acceptance_criteria": [
+            "file task/api/task.api.ts (or equivalent) exports addTag(taskId: string, tagName: string): Promise<Task> that inserts a row into task_tags and returns the updated Task",
+            "addTag with non-existent taskId or tagName throws an error (exit code 1 on test, stderr contains 'not found')",
+            "file task/api/task.api.ts exports removeTag(taskId: string, tagName: string): Promise<Task> that deletes the row from task_tags and returns the updated Task",
+            "file task/api/task.api.ts exports getTasksByTag(tagName: string): Promise<Task[]> that returns tasks with that tag via JOIN on task_tags and tags, ordered by created_at ascending",
+            "getAllTasks returns tasks with a tags field (array of Tag objects) populated via LEFT JOIN",
+            "deleteTask cascades to remove rows from task_tags (verified by querying task_tags after delete)"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta) — task"
+        },
+        {
+          "id": "T-010",
+          "title": "Add UI components for tag display, tag input, and tag filter",
+          "description": "Create React components: TagBadge (shows tag name), TagInput (autocomplete from existing tags, allows creating new tag on-the-fly), TagFilter (dropdown or list to filter tasks by tag). Wire into existing task list UI.",
+          "module_scope": "ui",
+          "dependencies": [
+            "T-009"
+          ],
+          "estimated_tokens": 10000,
+          "acceptance_criteria": [
+            "file ui/components/TagBadge.tsx renders a span with tag name text and a remove button (X) that calls removeTag",
+            "file ui/components/TagInput.tsx renders an input that shows autocomplete suggestions from getAllTags, and on submit calls addTag or createTag+addTag",
+            "file ui/components/TagFilter.tsx renders a dropdown of all tags; selecting a tag filters the task list to only tasks with that tag (calls getTasksByTag)",
+            "task list items display TagBadge components for each tag on the task",
+            "adding a tag via TagInput updates the task list without full page reload"
+          ],
+          "rfc_section": "Extension 1 — Module Breakdown (delta) — ui"
+        }
+      ],
+      "starts_from_task_id": "T-007"
+    }
+  ]
+}

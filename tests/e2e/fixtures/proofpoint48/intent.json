@@ -1,0 +1,19 @@
+{
+  "goal": "Build a modern web-based todo application.",
+  "target_users": [
+    "end users"
+  ],
+  "must_have_features": [
+    "task creation",
+    "task listing",
+    "task completion marking",
+    "task deletion",
+    "local data persistence"
+  ],
+  "nice_to_have_features": [],
+  "explicit_non_goals": [],
+  "constraints": [],
+  "inferred_compliance": [],
+  "inferred_scale": "small",
+  "open_questions": []
+}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "tier": "T4",
+  "app_class": "web",
+  "language": "TypeScript",
+  "primary_framework": "React + Vite",
+  "package_manager": "npm",
+  "test_cmd": "npx vitest run",
+  "run_cmd": "npm run dev",
+  "key_libraries": [
+    "sql.js",
+    "zod",
+    "uuid"
+  ],
+  "deploy_target": "",
+  "rationale": "User explicitly requires TypeScript + React + Vite SPA with in-browser SQLite via sql.js and IndexedDB persistence. No server or CLI frameworks. Zod validates task data, uuid generates IDs. Static SPA, no deploy target needed."
+}

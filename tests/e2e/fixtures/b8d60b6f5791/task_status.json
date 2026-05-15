@@ -1,0 +1,69 @@
+{
+  "project_id": "b8d60b6f5791",
+  "records": {
+    "T-001": {
+      "task_id": "T-001",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-002": {
+      "task_id": "T-002",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider adding a type guard for StorageFile validation instead of relying on a generic check for Array.isArray(parsed.notes)",
+        "The lockfile path is derived as filePath + '.lock' which for the default path becomes ~/.notes/notes.json.lock, not ~/.notes/notes.lock as stated in the criterion. The criterion says ~/.notes/notes.lock but the implementation uses ~/.notes/notes.json.lock. This is a minor discrepancy — the criterion text may need clarification."
+      ],
+      "last_error": null
+    },
+    "T-003": {
+      "task_id": "T-003",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-005": {
+      "task_id": "T-005",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider adding unit tests for isPathSafe with edge cases (e.g., symlinks, trailing slashes, empty string) to ensure robustness."
+      ],
+      "last_error": null
+    },
+    "T-004": {
+      "task_id": "T-004",
+      "status": "DONE",
+      "attempts": 3,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider using program.exitOverride() with a custom handler instead of calling process.exit() directly in action handlers to allow Commander to manage exit codes uniformly",
+        "The run function accepts service as a parameter — good DI practice, but ensure the caller in the entry point instantiates NoteService correctly"
+      ],
+      "last_error": null
+    },
+    "T-006": {
+      "task_id": "T-006",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider also sanitizing the 'add' command output (line 33) for consistency, though the criterion only requires list and search."
+      ],
+      "last_error": null
+    }
+  }
+}

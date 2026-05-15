@@ -20,6 +20,12 @@ from runtime.codebase.baseline import (
     parse_test_count,
     write_baseline,
 )
+from runtime.codebase.exports import ExportSignature, extract_exports
+from runtime.codebase.prior_tasks import (
+    ModuleExports,
+    collect_prior_outputs,
+    format_prior_outputs_block,
+)
 from runtime.codebase.reader import read_related, scan_codebase
 from runtime.codebase.schema import (
     CodebaseSummary,
@@ -31,15 +37,20 @@ from runtime.codebase.schema import (
 
 __all__ = [
     "CodebaseSummary",
+    "ExportSignature",
     "FileEntry",
     "FrameworkHint",
+    "ModuleExports",
     "ModuleSymbols",
     "RegressionReport",
     "ScanStats",
     "TestBaseline",
     "capture_baseline",
     "check_regression",
+    "collect_prior_outputs",
     "detect_test_cmd",
+    "extract_exports",
+    "format_prior_outputs_block",
     "load_baseline",
     "parse_test_count",
     "read_related",

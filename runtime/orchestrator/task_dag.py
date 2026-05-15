@@ -55,6 +55,30 @@ class MissingDependency(Exception):
 class TaskDAG(BaseModel):
     project_id: str
     tasks: list[TaskSpec]
+    # M3.1 — `ortim extend` appends one `DagDelta` per extend cycle. Default
+    # empty list keeps legacy task_dag.json files (pre-M3.1) loading cleanly
+    # via Pydantic's default-on-missing semantics. The DagDelta schema
+    # itself lives in runtime.extend.schema; we hold `dict` here to avoid
+    # a runtime import cycle (extend imports TaskSpec from this module),
+    # and the Orchestrator validator (M3.1.1) is the layer that enforces
+    # delta-shape correctness.
+    extensions: list[dict] = Field(default_factory=list)
+
+    def max_task_id(self) -> int:
+        """Return the highest numeric component of any existing task ID
+        (e.g. T-007 → 7). Returns 0 when the DAG has no tasks. Used by
+        the Orchestrator (M3.1.1) to assign continuous IDs to extend-cycle
+        tasks. Tolerant of zero-padded and non-padded formats."""
+        max_n = 0
+        for t in self.tasks:
+            tail = t.id.removeprefix("T-")
+            try:
+                n = int(tail)
+            except ValueError:
+                continue
+            if n > max_n:
+                max_n = n
+        return max_n
 
     def validate_dag(self) -> None:
         """Raise on missing dependency or cycle."""

@@ -45,6 +45,7 @@ from runtime.executor.worker import (
     WorkerAgent,
     WorkerOutOfScope,
     WorkerOutput,
+    WorkerSkillNotConsulted,
 )
 
 __all__ = [
@@ -71,6 +72,7 @@ __all__ = [
     "WorkerAgent",
     "WorkerOutOfScope",
     "WorkerOutput",
+    "WorkerSkillNotConsulted",
     "abandon_task_branch",
     "add_worktree",
     "check_extension",

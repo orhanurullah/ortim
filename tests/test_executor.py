@@ -271,6 +271,119 @@ def test_review_verdict_l1_violations_block_approval_independent_of_criteria() -
     assert any("[L1]" in r for r in v.reasons)
 
 
+# ---------- Reviewer prompt sertleştirme (items 16 + 37) ----------
+
+
+def test_reviewer_prompt_teaches_test_infrastructure_unverifiable_reason() -> None:
+    """Item 16 fix: agents/reviewer.md must teach the LLM to emit
+    `unverifiable_reason: "test_infrastructure"` whenever the evidence
+    cites tests-skipped or runner-unavailable. Without this prompt rule,
+    the LLM defaults to `criterion_design` even when the criterion
+    wording is fine — sending the operator looking for the wrong fix.
+    """
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    # Schema field must be declared.
+    assert "unverifiable_reason" in prompt
+    # Both reasons must be named.
+    assert "test_infrastructure" in prompt
+    assert "criterion_design" in prompt
+    # The decision rule must be explicit — not just "two reasons exist".
+    p_lower = prompt.lower()
+    assert (
+        "tests were skipped" in p_lower
+        or "tests skipped" in p_lower
+        or "skipped" in p_lower
+    )
+    # And the explicit instruction to USE test_infrastructure in that case.
+    assert "test_infrastructure" in prompt and "skipped" in p_lower
+
+
+def test_reviewer_prompt_teaches_barrel_imports_are_correct() -> None:
+    """Item 37 fix: agents/reviewer.md must contain explicit examples
+    of barrel imports as CORRECT (not violations). Pre-fix Reviewer
+    flagged `from '../db-adapter'` as a boundary breach even though
+    that path resolves to the barrel's index.ts — causing every
+    cross-module-importing task in the M4 E2E to be falsely rejected.
+    """
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    p_lower = prompt.lower()
+    # The section header must exist.
+    assert "barrel import" in p_lower
+    # An explicit CORRECT example with a bare module path.
+    assert "../task-service" in prompt or "../db-adapter" in prompt
+    # And an explicit VIOLATION example with an internal-file path.
+    assert "/internal" in prompt or "/types" in prompt or "/crud" in prompt
+    # The rule-of-thumb sentence — bare module path = correct.
+    assert "no slash beyond it" in p_lower or "ends at a module name" in p_lower
+
+
+def test_reviewer_prompt_teaches_stack_json_citation_discipline() -> None:
+    """Item 43 fix: agents/reviewer.md must teach the LLM to cite `stack.json`
+    as the authoritative source when flagging library/import violations, NOT
+    "the locked stack" paraphrastically (which tempts the LLM to merge
+    stack.json contents with RFC §4 drift).
+
+    Symptom (proof-point v3 T-002): Reviewer wrote "the locked stack lists
+    sql.js, zod, **zustand**" when stack.json.key_libraries was actually
+    [sql.js, zod]; zustand had drifted in from RFC §4. The verdict was
+    functionally correct (zustand-not-in-stack still flagged) but the
+    citation prose conflated authoritative source with derivative.
+    """
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    p_lower = prompt.lower()
+
+    # The hard rule must name stack.json explicitly as authoritative.
+    assert "stack.json" in prompt, "stack.json must be named verbatim"
+    assert (
+        "authoritative" in p_lower
+    ), "stack.json must be framed as the authoritative source"
+
+    # The rule must warn against the paraphrastic "the locked stack lists"
+    # phrasing that conflates stack.json with RFC §4 drift.
+    assert (
+        "the locked stack lists" in p_lower
+    ), "the failure-mode phrasing must be quoted so the LLM avoids it"
+
+    # The rule must give a positive template — quote the field by name.
+    assert (
+        "key_libraries" in prompt
+    ), "must instruct to quote stack.json.key_libraries by field name"
+
+    # RFC §4 / drift relationship must be made explicit.
+    assert "rfc §4" in p_lower or "rfc §4" in p_lower or "rfc section 4" in p_lower
+    assert "drift" in p_lower
+
+
+def test_review_verdict_test_infrastructure_reason_tags_distinctly() -> None:
+    """Schema-level guard (item 24 already shipped this, but pin against
+    regression): a criterion with `unverifiable_reason="test_infrastructure"`
+    must produce a `[unverifiable:test_infra]` tagged reason, distinct
+    from the `[unverifiable:design]` tag for ambiguous wording."""
+    raw = (
+        '{"criteria_verdicts": ['
+        '{"criterion": "create returns Task object", '
+        '"status": "unverifiable", '
+        '"evidence": "tests were SKIPPED — runner unavailable", '
+        '"unverifiable_reason": "test_infrastructure"}'
+        ']}'
+    )
+    v = ReviewVerdict.model_validate_json(raw)
+    assert v.has_unverifiable is True
+    assert v.unverifiable_by_infra and not v.unverifiable_by_design
+    reasons = v.reasons
+    assert any("unverifiable:test_infra" in r for r in reasons), reasons
+    assert not any("unverifiable:design" in r for r in reasons)
+
+
 # ---------- TaskStatusFile roundtrip ----------
 
 

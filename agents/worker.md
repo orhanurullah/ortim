@@ -43,13 +43,25 @@ If the runtime has a test command configured (`AI_FACTORY_TEST_CMD`), the runner
       "content": "<full file content>",
       "operation": "create"
     }
-  ]
+  ],
+  "skills_consulted": ["<skill-name-1>", "<skill-name-2>"]
 }
 ```
 
 `operation` is `"create"` for new files, `"overwrite"` for existing ones the task spec says to modify. Either way, the runtime writes the full content you emit — there are no diffs in v0.5b.
 
+`skills_consulted` lists the names of every skill from the `## Active Skills` system block. The runtime cross-checks this against the resolved skill set; missing names cause a retry tagged `[skill]`. List skills you applied verbatim — partial matches and paraphrases do not count.
+
 Output ONLY the JSON. No prose, no markdown fences, no explanation.
+
+## Skill Acknowledgement
+
+When the system prompt contains an `## Active Skills` block, every skill there is a HARD rule with the same weight as L1 principles. Two obligations follow:
+
+1. **Apply** each skill in the produced code. Reviewer cross-checks the output against skill content — a violation is a criterion `fail`, not a stylistic note.
+2. **Acknowledge** each skill in `skills_consulted` — list every skill name verbatim. Omitting a name is treated as evidence you did not read the skill block, and the runtime retries with the same skill set in scope.
+
+If `## Active Skills` is absent for this task, leave `skills_consulted` empty. The runtime applies no check in that case.
 
 ## Determinism
 

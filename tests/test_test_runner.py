@@ -14,11 +14,17 @@ runs `vitest` even if the user never exports the env var.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
-from runtime.executor.test_runner import configured_plan
+from runtime.executor.test_runner import (
+    _apply_scope,
+    _detect_runner,
+    configured_plan,
+    run_tests,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +52,11 @@ def test_workspace_file_used_when_env_unset(tmp_path: Path) -> None:
     )
     plan = configured_plan(tmp_path)
     assert plan is not None
-    assert plan.cmd == ["npx", "vitest", "run"]
+    # plan.cmd[0] is resolved through shutil.which so subprocess can find
+    # `.cmd` shims on Windows. We don't assert the exact path (varies per
+    # machine) — only that the basename matches and the rest is untouched.
+    assert Path(plan.cmd[0]).stem.lower() == "npx"
+    assert plan.cmd[1:] == ["vitest", "run"]
     assert ".ai-factory.env" in plan.rationale
 
 
@@ -80,3 +90,129 @@ def test_disabled_via_env_overrides_everything(
     )
     monkeypatch.setenv("AI_FACTORY_TESTS_ENABLED", "false")
     assert configured_plan(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Item 39b — per-task scope. The runner appends `task.module_scope` to test
+# commands that support positional path filtering. Without this, ONE broken
+# test contaminates every downstream task's verdict (see tespit.md item 39b).
+# ---------------------------------------------------------------------------
+
+
+def test_apply_scope_appends_to_vitest_with_passwithnotests() -> None:
+    result = _apply_scope(["npx", "vitest", "run"], "task-service")
+    assert result == ["npx", "vitest", "run", "task-service", "--passWithNoTests"]
+
+
+def test_apply_scope_vitest_passwithnotests_idempotent() -> None:
+    # If the operator already configured --passWithNoTests in their env,
+    # we shouldn't double-add it.
+    result = _apply_scope(["npx", "vitest", "run", "--passWithNoTests"], "ui")
+    assert result.count("--passWithNoTests") == 1
+    assert "ui" in result
+
+
+def test_apply_scope_appends_to_pytest() -> None:
+    assert _apply_scope(["pytest", "-q"], "task_service") == [
+        "pytest",
+        "-q",
+        "task_service",
+    ]
+
+
+def test_apply_scope_appends_to_flutter_test() -> None:
+    assert _apply_scope(["flutter", "test"], "lib/widgets") == [
+        "flutter",
+        "test",
+        "lib/widgets",
+    ]
+
+
+def test_apply_scope_cargo_left_unchanged_legacy() -> None:
+    # cargo uses package-name flag (-p name), not a path. Per item 39b' the
+    # cargo adapter is deferred — workspace-wide behavior preserved.
+    cmd = ["cargo", "test"]
+    assert _apply_scope(cmd, "some-crate") == cmd
+
+
+def test_apply_scope_go_test_left_unchanged_legacy() -> None:
+    # go test uses ./<pkg>/... pattern, not append. Deferred to 39b'.
+    cmd = ["go", "test", "./..."]
+    assert _apply_scope(cmd, "store") == cmd
+
+
+def test_apply_scope_none_or_empty_is_noop() -> None:
+    cmd = ["pytest", "-q"]
+    assert _apply_scope(cmd, None) is cmd
+    assert _apply_scope(cmd, "") is cmd
+
+
+def test_detect_runner_recognizes_resolved_paths() -> None:
+    # shutil.which resolves `pytest` to `C:\Python\Scripts\pytest.exe` on
+    # Windows; the detection logic must look at basename.stem.
+    assert _detect_runner(["C:\\Python\\Scripts\\pytest.exe", "-q"]) == "pytest"
+    assert _detect_runner(["/usr/local/bin/npx", "vitest", "run"]) == "vitest"
+
+
+def _fake_completed(returncode: int, stdout: str = "", stderr: str = ""):
+    """Build a subprocess.CompletedProcess stand-in for monkeypatch."""
+
+    class _Stub:
+        def __init__(self) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    return _Stub()
+
+
+def test_run_tests_normalizes_pytest_exit_5_when_scoped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pytest exits 5 when no tests were collected. Under a per-task scope
+    that just means 'this module has no tests' — neutral, not failure."""
+    monkeypatch.setenv("AI_FACTORY_TEST_CMD", "pytest -q")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: _fake_completed(5, "no tests ran in 0.01s", ""),
+    )
+    result = run_tests(tmp_path, scope="empty_module")
+    assert result.exit_code == 0
+    assert result.passed
+    assert "normalized" in result.stdout_tail
+
+
+def test_run_tests_does_not_normalize_pytest_exit_5_when_unscoped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Workspace-wide pytest returning 5 means the project has zero tests
+    — genuinely suspicious. Don't normalize that away."""
+    monkeypatch.setenv("AI_FACTORY_TEST_CMD", "pytest -q")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: _fake_completed(5, "no tests ran", ""),
+    )
+    result = run_tests(tmp_path, scope=None)
+    assert result.exit_code == 5
+    assert not result.passed
+
+
+def test_run_tests_passes_scoped_cmd_to_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end shape check: the cmd that subprocess.run sees actually
+    contains the scope token. This is the integration glue between
+    _apply_scope and run_tests."""
+    monkeypatch.setenv("AI_FACTORY_TEST_CMD", "npx vitest run")
+    captured: dict[str, list[str]] = {}
+
+    def _spy(cmd, **kw):  # type: ignore[no-untyped-def]
+        captured["cmd"] = list(cmd)
+        return _fake_completed(0)
+
+    monkeypatch.setattr(subprocess, "run", _spy)
+    run_tests(tmp_path, scope="task-service")
+    assert "task-service" in captured["cmd"]
+    assert "--passWithNoTests" in captured["cmd"]

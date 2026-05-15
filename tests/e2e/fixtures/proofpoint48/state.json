@@ -1,0 +1,174 @@
+{
+  "id": "proofpoint48",
+  "name": "web-todo-proofpoint-v3",
+  "initial_brief_tr": "Modern bir web tabanli todo uygulamasi. Kullanici gorev ekleyebilmeli, listeleyebilmeli, tamamladi olarak isaretleyebilmeli, silebilmeli. Veriler yerel bir SQLite veritabaninda saklanmali. Modern, temiz bir kullanici arayuzu olmali.",
+  "state": "executing",
+  "history": [
+    {
+      "timestamp": "2026-05-14T08:05:11.090913+00:00",
+      "from_state": "intake",
+      "to_state": "babel_processing",
+      "actor": "babel-layer",
+      "note": ""
+    },
+    {
+      "timestamp": "2026-05-14T08:05:16.893919+00:00",
+      "from_state": "babel_processing",
+      "to_state": "intake_dialog",
+      "actor": "babel-layer",
+      "note": "intent extracted; entering INTAKE_DIALOG"
+    },
+    {
+      "timestamp": "2026-05-14T08:05:32.994166+00:00",
+      "from_state": "intake_dialog",
+      "to_state": "stack_dialog",
+      "actor": "lock",
+      "note": "intent locked; entering stack dialog"
+    },
+    {
+      "timestamp": "2026-05-14T08:05:55.250644+00:00",
+      "from_state": "stack_dialog",
+      "to_state": "prd_dialog",
+      "actor": "lock",
+      "note": "stack locked; entering PRD dialog"
+    },
+    {
+      "timestamp": "2026-05-14T08:06:06.925482+00:00",
+      "from_state": "prd_dialog",
+      "to_state": "prd_awaiting_approval",
+      "actor": "lock",
+      "note": "PRD locked; G1 HITL gate open"
+    },
+    {
+      "timestamp": "2026-05-14T08:06:15.196055+00:00",
+      "from_state": "prd_awaiting_approval",
+      "to_state": "prd_approved",
+      "actor": "cli-manual",
+      "note": "v3 post 41'+44"
+    },
+    {
+      "timestamp": "2026-05-14T08:06:18.810818+00:00",
+      "from_state": "prd_approved",
+      "to_state": "rfc_drafting",
+      "actor": "architect",
+      "note": "extracting inputs"
+    },
+    {
+      "timestamp": "2026-05-14T08:06:55.623705+00:00",
+      "from_state": "rfc_drafting",
+      "to_state": "rfc_awaiting_approval",
+      "actor": "architect",
+      "note": "tier=T4"
+    },
+    {
+      "timestamp": "2026-05-14T08:07:01.475536+00:00",
+      "from_state": "rfc_awaiting_approval",
+      "to_state": "rfc_approved",
+      "actor": "cli-manual",
+      "note": "v3"
+    },
+    {
+      "timestamp": "2026-05-14T08:07:04.593089+00:00",
+      "from_state": "rfc_approved",
+      "to_state": "tasks_generating",
+      "actor": "orchestrator",
+      "note": "generating DAG"
+    },
+    {
+      "timestamp": "2026-05-14T08:07:22.045182+00:00",
+      "from_state": "tasks_generating",
+      "to_state": "tasks_ready",
+      "actor": "orchestrator",
+      "note": "6 tasks, 5 batches"
+    },
+    {
+      "timestamp": "2026-05-14T08:07:44.836962+00:00",
+      "from_state": "tasks_ready",
+      "to_state": "executing",
+      "actor": "executor",
+      "note": "run-all start"
+    },
+    {
+      "timestamp": "2026-05-14T08:21:47.375006+00:00",
+      "from_state": "executing",
+      "to_state": "done",
+      "actor": "executor",
+      "note": "all tasks done"
+    },
+    {
+      "timestamp": "2026-05-15T08:24:37.273557+00:00",
+      "from_state": "done",
+      "to_state": "extend_dialog",
+      "actor": "cli-extend",
+      "note": "cycle 1 initiated"
+    },
+    {
+      "timestamp": "2026-05-15T08:24:40.295524+00:00",
+      "from_state": "extend_dialog",
+      "to_state": "extend_prd_dialog",
+      "actor": "cli-extend",
+      "note": "delta intent persisted; drafting PRD section"
+    },
+    {
+      "timestamp": "2026-05-15T08:24:48.659258+00:00",
+      "from_state": "extend_prd_dialog",
+      "to_state": "extend_prd_awaiting_approval",
+      "actor": "cli-extend",
+      "note": "cycle 1 delta PRD locked; G1 HITL gate open"
+    },
+    {
+      "timestamp": "2026-05-15T08:24:54.664627+00:00",
+      "from_state": "extend_prd_awaiting_approval",
+      "to_state": "extend_prd_approved",
+      "actor": "cli-manual",
+      "note": "item 48 re-proof-point"
+    },
+    {
+      "timestamp": "2026-05-15T08:24:58.132228+00:00",
+      "from_state": "extend_prd_approved",
+      "to_state": "extend_rfc_drafting",
+      "actor": "cli-extend-rfc",
+      "note": "cycle 1 delta RFC drafting"
+    },
+    {
+      "timestamp": "2026-05-15T08:25:10.398794+00:00",
+      "from_state": "extend_rfc_drafting",
+      "to_state": "extend_rfc_awaiting_approval",
+      "actor": "cli-extend-rfc",
+      "note": "cycle 1 delta RFC locked; G2 HITL gate open"
+    },
+    {
+      "timestamp": "2026-05-15T08:25:16.036473+00:00",
+      "from_state": "extend_rfc_awaiting_approval",
+      "to_state": "extend_rfc_approved",
+      "actor": "cli-manual",
+      "note": "item 48 re-proof-point"
+    },
+    {
+      "timestamp": "2026-05-15T08:25:19.782432+00:00",
+      "from_state": "extend_rfc_approved",
+      "to_state": "tasks_generating",
+      "actor": "orchestrator-extend",
+      "note": "cycle 1 delta DAG"
+    },
+    {
+      "timestamp": "2026-05-15T08:25:34.974614+00:00",
+      "from_state": "tasks_generating",
+      "to_state": "tasks_ready",
+      "actor": "orchestrator-extend",
+      "note": "cycle 1: 4 new tasks"
+    },
+    {
+      "timestamp": "2026-05-15T08:37:50.581520+00:00",
+      "from_state": "tasks_ready",
+      "to_state": "executing",
+      "actor": "executor",
+      "note": "run-all start"
+    }
+  ],
+  "created_at": "2026-05-14T08:05:01.513720+00:00",
+  "tenant_id": "default",
+  "is_brownfield": false,
+  "app_class": "web",
+  "source_path": null
+}

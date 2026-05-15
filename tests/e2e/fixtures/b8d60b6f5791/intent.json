@@ -1,0 +1,20 @@
+{
+  "goal": "Build a simple CLI note-taking application that allows users to manage notes via the terminal.",
+  "target_users": [
+    "individual users who need a lightweight terminal-based note manager"
+  ],
+  "must_have_features": [
+    "add a note",
+    "list notes",
+    "delete a note",
+    "search notes",
+    "persist notes to a JSON file",
+    "note with title, content, and creation date fields"
+  ],
+  "nice_to_have_features": [],
+  "explicit_non_goals": [],
+  "constraints": [],
+  "inferred_compliance": [],
+  "inferred_scale": "small",
+  "open_questions": []
+}

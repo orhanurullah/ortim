@@ -1,0 +1,62 @@
+{
+  "project_id": "1b9c9f9ca18b",
+  "records": {
+    "T-001": {
+      "task_id": "T-001",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-002": {
+      "task_id": "T-002",
+      "status": "DONE",
+      "attempts": 2,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-003": {
+      "task_id": "T-003",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-004": {
+      "task_id": "T-004",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    },
+    "T-005": {
+      "task_id": "T-005",
+      "status": "DONE",
+      "attempts": 1,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [
+        "Consider adding a more descriptive loading message or a spinner animation for better UX.",
+        "The ErrorBoundary could accept a fallback prop for custom error messages, but the current implementation satisfies the criterion."
+      ],
+      "last_error": null
+    },
+    "T-006": {
+      "task_id": "T-006",
+      "status": "DONE",
+      "attempts": 2,
+      "last_review_approved": true,
+      "last_review_reasons": [],
+      "last_review_suggestions": [],
+      "last_error": null
+    }
+  }
+}

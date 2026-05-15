@@ -38,6 +38,9 @@ _CATEGORY_PREFIXES: tuple[tuple[str, str], ...] = (
     ("architect_", "architect"),
     ("orchestrator_", "orchestrator"),
     ("analyst_", "analyst"),
+    ("intent_analyst_", "analyst"),
+    ("stack_analyst_", "analyst"),
+    ("prd_analyst_", "analyst"),
     ("babel_", "babel"),
     ("worker_", "worker"),
     ("reviewer_", "reviewer"),
@@ -46,6 +49,10 @@ _CATEGORY_PREFIXES: tuple[tuple[str, str], ...] = (
     ("perf_reviewer_", "reviewer"),
     ("executor_", "executor"),
     ("hook_", "executor"),
+    ("workspace_", "executor"),
+    ("documenter_", "documenter"),
+    ("extend_", "extender"),
+    ("drift_", "drift"),
     ("budget_", "budget"),
     ("gate_", "gate"),
     ("project_", "project"),
@@ -99,8 +106,14 @@ class AuditLogger:
         category = fields.pop("category", None) or _derive_category(event)
         bypassed = not redaction_enabled()
 
+        # Timestamp is system-generated (UTC ISO 8601) and contains no PII,
+        # but the date portion (`YYYY-MM-DD`) trips the phone regex because
+        # `-` is one of its digit-grouping indicators — producing absurd
+        # `[PHONE]T13:00:53...` strings that break any downstream consumer
+        # parsing wall time (e.g. `ortim retro` latency rollup). Keep the
+        # timestamp out of the redaction pass; redact the rest of the body.
+        timestamp = datetime.now(timezone.utc).isoformat()
         body: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event": event,
             "category": category,
             **fields,
@@ -109,6 +122,7 @@ class AuditLogger:
             body["redaction_bypassed"] = True
         else:
             body = redact_value(body)  # type: ignore[assignment]
+        body = {"timestamp": timestamp, **body}
 
         with self._write_lock:
             if self._last_hash is None:

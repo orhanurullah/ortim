@@ -1,0 +1,17 @@
+{
+  "has_persistent_state": true,
+  "has_auth": false,
+  "compliance": [],
+  "expected_scale": "unknown",
+  "team_size": "unknown",
+  "audit_heavy": false,
+  "realtime_required": false,
+  "multi_tenant": false,
+  "bursty_workload": false,
+  "ops_capacity": "unknown",
+  "app_class": "web",
+  "target_platforms": [],
+  "offline_required": false,
+  "native_features": [],
+  "has_existing_web_frontend": false
+}
