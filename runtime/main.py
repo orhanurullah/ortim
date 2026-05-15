@@ -2297,6 +2297,82 @@ def _maybe_open_schema_gate(project, dag, audit) -> tuple[bool, list[str]]:
     return True, list(evidence.task_ids)
 
 
+def _maybe_open_budget_gate(project, audit) -> tuple[bool, float, float]:
+    """G7 — when accumulated spend reaches `AI_FACTORY_BUDGET_CAP_USD`
+    and the project is still EXECUTING, transition to
+    BUDGET_AWAITING_APPROVAL. Returns `(gated, spent_usd, cap_usd)`.
+
+    G7 is the only HITL gate that Ortim_Architecture.md §8 marks
+    override-able — a hard ceiling on cost is operationally wrong, but
+    silent overrun is worse. The gate surfaces the breach + a
+    standardized audit event; the operator decides whether to approve
+    the overage or pause.
+
+    No-ops when:
+      * `AI_FACTORY_BUDGET_CAP_USD` is unset or non-positive
+      * project state is not EXECUTING (already gated or finalized)
+    """
+    cap_raw = os.getenv("AI_FACTORY_BUDGET_CAP_USD")
+    if not cap_raw:
+        return False, 0.0, 0.0
+    try:
+        cap = float(cap_raw)
+    except ValueError:
+        return False, 0.0, 0.0
+    if cap <= 0:
+        return False, 0.0, 0.0
+    if project.state != ProjectState.EXECUTING:
+        return False, 0.0, cap
+
+    from runtime.budget import BudgetTracker
+    from runtime.orchestrator import detect_budget_breach
+
+    evidence = detect_budget_breach(BudgetTracker(), project.id, cap)
+    if not evidence.triggered:
+        return False, evidence.spent_usd, cap
+
+    project.transition(
+        ProjectState.BUDGET_AWAITING_APPROVAL,
+        actor="executor",
+        note=(
+            f"budget cap breached: "
+            f"${evidence.spent_usd:.4f} >= ${cap:.4f}"
+        ),
+    )
+    audit.log(
+        "gate_budget_opened",
+        project_id=project.id,
+        spent_usd=evidence.spent_usd,
+        cap_usd=cap,
+        overage_pct=evidence.overage_pct,
+    )
+    project.save(WORKSPACE_ROOT)
+    return True, evidence.spent_usd, cap
+
+
+def _print_budget_gate_message(spent: float, cap: float) -> None:
+    overage_pct = round((spent / cap) * 100, 1) if cap > 0 else 0.0
+    console.print(
+        f"[yellow]G7 — Budget cap breached.[/yellow] "
+        f"Spent [bold]${spent:.4f}[/bold] / cap "
+        f"[bold]${cap:.4f}[/bold] ({overage_pct}%)"
+    )
+    console.print("Two options:")
+    console.print(
+        "  [cyan]ortim advance <project-id> budget_approved[/cyan]  "
+        "(approve this overage and continue)"
+    )
+    console.print(
+        "  [cyan]ortim advance <project-id> paused[/cyan]  "
+        "(halt and review)"
+    )
+    console.print(
+        "[dim]Note: the cap is per-invocation. To raise it for future "
+        "runs, set AI_FACTORY_BUDGET_CAP_USD to a higher value or unset "
+        "it entirely.[/dim]"
+    )
+
+
 def _print_schema_gate_message(task_ids: list[str]) -> None:
     console.print(
         "[yellow]G3 — Schema/migration gate opened.[/yellow]"
@@ -2402,6 +2478,15 @@ def execute(
             ProjectState.EXECUTING, actor="executor", note=f"start {task_id}"
         )
         project.save(WORKSPACE_ROOT)
+
+    # G7 — re-check budget on every single-task execute as well. The
+    # operator may invoke `ortim execute` after `budget_approved` to
+    # advance the next task; if the previous overage was just barely
+    # tolerated, the next call also gets a fresh decision point.
+    budget_gated, spent, cap = _maybe_open_budget_gate(project, audit)
+    if budget_gated:
+        _print_budget_gate_message(spent, cap)
+        raise typer.Exit(code=2)
 
     # Self-correcting loop. `execute_task` already feeds prior_reasons into
     # the Worker prompt on attempts > 1 and bumps the task to AWAITING_HITL
@@ -2807,6 +2892,15 @@ def _run_all_loop(
                 f"toplam çalışma {sum_seconds:.1f}s, hızlanma x{speedup:.2f}[/dim]"
             )
 
+        # G7 — check budget cap after every batch. Single check per batch
+        # is the right granularity: per-task is noisy, end-of-run is too
+        # late (entire DAG could overrun before we notice).
+        budget_gated, spent, cap = _maybe_open_budget_gate(project, audit)
+        if budget_gated:
+            _print_budget_gate_message(spent, cap)
+            blocked = True
+            break
+
         if blocked and stop_on_fail:
             break
 
@@ -2856,6 +2950,217 @@ def budget(
         console.print(prov_table)
     elif by_provider:
         console.print("[dim](no provider data — audit log may be empty)[/dim]")
+
+
+_DEMO_DEFAULT_BRIEF = (
+    "Build a simple CLI todo manager that adds, lists, completes, "
+    "and deletes tasks. Persist tasks to a local JSON file."
+)
+
+
+@app.command()
+def demo(
+    brief: str = typer.Option(
+        _DEMO_DEFAULT_BRIEF,
+        "--brief",
+        help="Custom demo brief (default: todo CLI in English)",
+    ),
+    execute_first: bool = typer.Option(
+        False, "--execute",
+        help="Also execute T-001 after planning (adds ~$0.05 LLM cost)",
+    ),
+) -> None:
+    """End-to-end planning demo — brief → PRD → RFC → DAG in one command.
+
+    Disables dialog mode and auto-approves G1/G2 so the chain runs to
+    `tasks_ready` without operator intervention. This is a non-production
+    walkthrough; the auto-approve is recorded in audit log as
+    `gate_prd_approved` / `gate_rfc_approved` with the demo note so the
+    intent is never silent.
+
+    Approximate cost on DeepSeek-only routing: $0.02-0.05 for planning,
+    +$0.05 per task with --execute. Requires DEEPSEEK_API_KEY or
+    ANTHROPIC_API_KEY; `ortim doctor` to verify env.
+    """
+    import subprocess
+    import time
+
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+    has_deepseek = bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
+    if not (has_anthropic or has_deepseek):
+        console.print(
+            "[red]No LLM API key set.[/red] Run [cyan]ortim doctor[/cyan] "
+            "for env status. Set DEEPSEEK_API_KEY or ANTHROPIC_API_KEY "
+            "and try again."
+        )
+        raise typer.Exit(code=1)
+
+    _ensure_workspace_root()
+    project_name = f"demo-{int(time.time())}"
+    console.print(
+        f"\n[bold]Ortim Demo[/bold] — workspace name: [cyan]{project_name}[/cyan]"
+    )
+    console.print(f"[dim]Brief: {brief[:80]}{'...' if len(brief) > 80 else ''}[/dim]")
+
+    project = Project(name=project_name, initial_brief_tr=brief)
+    project.save(WORKSPACE_ROOT)
+    console.print(f"[dim]project_id: {project.id}[/dim]\n")
+
+    # Dialog mode off for the demo run — restored on exit. Without this,
+    # `run` routes through INTAKE_DIALOG / STACK_DIALOG / PRD_DIALOG and
+    # demo would need to also drive `ortim discuss` interactions.
+    saved_dialog = os.environ.get("AI_FACTORY_DIALOG_MODE")
+    os.environ["AI_FACTORY_DIALOG_MODE"] = "off"
+
+    def _step(args: list[str], label: str) -> int:
+        console.print(f"[cyan]→ {label}[/cyan]")
+        result = subprocess.run(
+            [sys.executable, "-m", "runtime.main", *args],
+            cwd=REPO_ROOT,
+        )
+        return result.returncode
+
+    try:
+        chain = [
+            (["run", project.id], "Babel + Analyst (PRD draft)"),
+            (
+                ["advance", project.id, "prd_approved", "--note", "demo auto-approve"],
+                "G1 — auto-approve PRD",
+            ),
+            (["run", project.id], "Architect (RFC + tier selection)"),
+            (
+                ["advance", project.id, "rfc_approved", "--note", "demo auto-approve"],
+                "G2 — auto-approve RFC",
+            ),
+            (["run", project.id], "Orchestrator (DAG generation)"),
+        ]
+        if execute_first:
+            chain.append((["execute", project.id, "T-001"], "Worker + Reviewer (T-001)"))
+
+        for args, label in chain:
+            rc = _step(args, label)
+            if rc != 0:
+                # `execute` may fail at the last step without invalidating
+                # the planning chain that already produced PRD/RFC/DAG —
+                # surface the failure but still print the summary so the
+                # operator can inspect the artifacts.
+                if args[0] == "execute":
+                    console.print(
+                        f"[yellow]T-001 did not complete cleanly "
+                        f"(exit {rc}); planning artifacts are still valid.[/yellow]"
+                    )
+                    break
+                console.print(
+                    f"[red]Step '{label}' failed (exit {rc}); aborting demo.[/red]"
+                )
+                raise typer.Exit(code=rc)
+    finally:
+        if saved_dialog is None:
+            os.environ.pop("AI_FACTORY_DIALOG_MODE", None)
+        else:
+            os.environ["AI_FACTORY_DIALOG_MODE"] = saved_dialog
+
+    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
+    console.print("\n[bold green]Demo complete.[/bold green]")
+    console.print(f"Workspace: [cyan]{workspace}[/cyan]")
+    console.print("\n[bold]Next steps:[/bold]")
+    console.print(
+        f"  [cyan]ortim status {project.id}[/cyan]      — state + history"
+    )
+    console.print(
+        f"  [cyan]ortim tasks {project.id}[/cyan]       — generated DAG"
+    )
+    console.print(
+        f"  [cyan]ortim retro {project.id}[/cyan]       — token + cost rollup"
+    )
+    console.print(
+        f"  [cyan]ortim drift-check {project.id}[/cyan] — integrity check"
+    )
+    if not execute_first:
+        console.print(
+            f"  [cyan]ortim run-all {project.id}[/cyan]    "
+            "— execute all tasks end-to-end"
+        )
+
+
+@app.command()
+def doctor(
+    as_json: bool = typer.Option(
+        False, "--json",
+        help="JSON çıktısı (otomasyon için)",
+    ),
+) -> None:
+    """Environment health check — keys, runtimes, prompts, templates.
+
+    Read-only. Reports gaps + fix hints; does not modify anything.
+
+    Exit kodları:
+      0 — clean (required + recommended ✓)
+      2 — required ✓ ama bir veya daha fazla recommended eksik
+      3 — required eksik (sistem temel komutlar bile çalıştıramaz)
+    """
+    import json as _json
+
+    from runtime.doctor import run_all_checks, to_json_dict
+
+    report = run_all_checks(
+        workspace_root=WORKSPACE_ROOT,
+        repo_root=REPO_ROOT,
+    )
+
+    if as_json:
+        console.print_json(_json.dumps(to_json_dict(report)))
+        raise typer.Exit(code=report.exit_code)
+
+    table = Table(title="Ortim Doctor")
+    table.add_column("Check", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Detail")
+    for c in report.checks:
+        if c.status == "ok":
+            status_cell = "[green]OK[/green]"
+        elif c.status == "warning":
+            status_cell = "[yellow]WARN[/yellow]"
+        else:
+            status_cell = (
+                "[red]MISS[/red]" if c.category == "required"
+                else "[yellow]MISS[/yellow]" if c.category == "recommended"
+                else "[dim]--[/dim]"
+            )
+        table.add_row(c.name, status_cell, c.detail)
+    console.print(table)
+
+    req_ok = sum(
+        1 for c in report.checks
+        if c.category == "required" and c.status == "ok"
+    )
+    rec_ok = sum(
+        1 for c in report.checks
+        if c.category == "recommended" and c.status == "ok"
+    )
+    opt_ok = sum(
+        1 for c in report.checks
+        if c.category == "optional" and c.status == "ok"
+    )
+    req_total = sum(1 for c in report.checks if c.category == "required")
+    rec_total = sum(1 for c in report.checks if c.category == "recommended")
+    opt_total = sum(1 for c in report.checks if c.category == "optional")
+
+    console.print(
+        f"\nrequired: [green]{req_ok}/{req_total}[/green]  "
+        f"recommended: "
+        f"{'[green]' if rec_ok == rec_total else '[yellow]'}"
+        f"{rec_ok}/{rec_total}[/]  "
+        f"optional: {opt_ok}/{opt_total}"
+    )
+
+    fix_hints = [c for c in report.checks if c.fix_hint and c.status != "ok"]
+    if fix_hints:
+        console.print("\n[bold]Fix hints:[/bold]")
+        for c in fix_hints:
+            console.print(f"  [cyan]{c.name}[/cyan]: {c.fix_hint}")
+
+    raise typer.Exit(code=report.exit_code)
 
 
 @app.command("drift-check")

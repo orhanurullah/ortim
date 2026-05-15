@@ -127,6 +127,8 @@ ortim budget <project-id>
 
 | Komut | Amaç |
 |---|---|
+| `ortim doctor [--json]` | Environment health check: Python sürümü, API key'ler, runtime binaries (node/git/flutter/cargo/go), agent prompts, skill dir. Exit 0 clean / 2 recommended eksik / 3 required eksik. |
+| `ortim demo [--brief "..."] [--execute]` | End-to-end planning walkthrough: brief → PRD → RFC → DAG. G1/G2 auto-approve, dialog-mode-off scoped. ~$0.02-0.05 cost on DeepSeek. `--execute` ile T-001'i de koştur. |
 | `ortim new <brief> --name <ad>` | Yeni proje aç |
 | `ortim run <id> [--step babel\|analyst\|architect\|orchestrator\|auto]` | Mevcut state'e göre uygun ajanı koştur |
 | `ortim status <id>` | Proje detayı + history |
@@ -136,6 +138,7 @@ ortim budget <project-id>
 | `ortim run-all <id> [--max-attempts N] [--continue-on-fail] [--parallel] [--max-workers N]` | DAG'ı topolojik batch'lerde koştur (default sıralı; `--parallel` ile worktree'li thread pool) |
 | `ortim budget [<id>]` | Token + USD raporu (audit log üzerinden) |
 | `ortim retro <id> [--per-task] [--category <name>] [--json]` | Retrospective rollup: per-category token+USD, per-task attempt counts (worker / sandbox / reviewer reject), skill triggers, HITL escalations, task wall-time p50/p95 |
+| `ortim drift-check <id> [--json]` | Multi-cycle integrity check: module scope (D1), ID continuity (D2), ID collision (D3), status↔audit reconciliation (D4). Exit 0 clean / 2 warning / 3 error. |
 | `ortim states` | Tüm state'ler ve izinli geçişler |
 | `ortim advance <id> <target> [--note]` | Manuel state ilerletme (HITL onayları + acil durum) |
 | `ortim score-tier [...]` | Verilen input'larla tier seçim algoritmasını koştur (API key gerekmez) |
