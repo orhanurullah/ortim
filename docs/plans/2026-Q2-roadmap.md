@@ -6,7 +6,7 @@
 >
 > **Kanonik konum.** Açık iş kalemleri [`../backlog.md`](../backlog.md)'da; bu dosya **stratejik sıralama** ve **faz kapısı** kararlarını saklar.
 >
-> **Son güncelleme:** 2026-05-16 (Faz 2.2 — Ollama provider infra ✅ shipped, live proof-point deferred; pytest 560 → 573, zero regression)
+> **Son güncelleme:** 2026-05-16 (Faz 2 tamamlandı — 2.1/2.2/2.3/2.4 + loader bug fix; pytest 521 → 598 across session, zero regression; live runs 2.2-pp + 2.3-pp deferred backlog'da)
 
 ---
 
@@ -144,7 +144,7 @@ Bu Reviewer mutation testing'in (Faz 2) ön-fixture'ı; mutation testing bu hard
 |---|---|---|---|---|---|
 | 2.1 | Docker skills (node/python/compose) | §2 | ~5h | 1.5 (skill pattern) | ✅ shipped |
 | 2.2 | Local LLM provider (Ollama/LM Studio) | §3 | ~7h | — | ✅ shipped (infra-only; live proof-point deferred until Ollama installed) |
-| 2.3 | Reviewer mutation testing | §6 P1-7 | ~6h | 1.5 | ⬜ todo |
+| 2.3 | Reviewer mutation testing | §6 P1-7 | ~6h | 1.5 | ✅ shipped (infra-only; live run deferred — backlog 2.3-pp) |
 | 2.4 | Skill yazma rehberi + 2 community skill | §5 dok | ~4h | 2.1 | ✅ shipped |
 
 ### 2.1 Docker skills

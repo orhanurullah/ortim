@@ -3829,5 +3829,119 @@ def score_tier_cmd(
         )
 
 
+@app.command("mutation-test")
+def mutation_test(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Çağrıları gerçek bir Reviewer LLM'ine gönder. Olmadan komut "
+        "case listesini ve metadata'yı bastırır (zero cost).",
+    ),
+    provider: str = typer.Option(
+        "deepseek",
+        "--provider",
+        help="--live için Reviewer provider'ı (anthropic / deepseek / "
+        "ollama). Role-spesifik override mevcutsa onu kullanır.",
+    ),
+    bug_class: str = typer.Option(
+        "",
+        "--bug-class",
+        help="Sadece bu bug class'ın case'lerini çalıştır. Boş ise "
+        "DEFAULT_CASES'in tamamı.",
+    ),
+) -> None:
+    """Faz 2.3 — Reviewer mutation testing.
+
+    Bilinen-bug fixture'larını Reviewer'a 'Worker output'muş gibi gönderir;
+    catch rate (loose + strict) ölçer. Hedef ≥%70 strict; <%50 → Reviewer
+    prompt sertleştirme tetiği.
+
+    Default --dry-run modu sadece case listesini bastırır (LLM çağrısı yok).
+    --live için Reviewer modeli üzerinden gerçek çağrı yapar (DeepSeek
+    örnek tahmini: 6 case × ~1500 token ≈ \\$0.02).
+    """
+    from runtime.mutation import DEFAULT_CASES, run_mutation_suite
+
+    cases = list(DEFAULT_CASES)
+    if bug_class:
+        cases = [c for c in cases if c.bug_class == bug_class]
+        if not cases:
+            valid = sorted({c.bug_class for c in DEFAULT_CASES})
+            console.print(
+                f"[red]Unknown --bug-class={bug_class!r}. "
+                f"Valid: {', '.join(valid)}[/red]"
+            )
+            raise typer.Exit(1)
+
+    if not live:
+        console.print(
+            f"[cyan]Mutation suite — {len(cases)} cases "
+            f"(--live olmadan, sadece listeleme):[/cyan]"
+        )
+        table = Table(show_header=True)
+        table.add_column("Bug class")
+        table.add_column("Case")
+        table.add_column("Language")
+        table.add_column("Keywords (strict)")
+        for c in cases:
+            table.add_row(
+                c.bug_class,
+                c.name,
+                c.language,
+                ", ".join(c.bug_keywords[:3])
+                + (" …" if len(c.bug_keywords) > 3 else ""),
+            )
+        console.print(table)
+        console.print(
+            "\n[dim]--live ekleyince Reviewer LLM'ine gönderilir. "
+            f"Provider override: --provider={provider}[/dim]"
+        )
+        return
+
+    # Live mode — instantiate a real Reviewer.
+    from runtime.audit import AuditLogger
+    from runtime.executor.reviewer import CodeReviewerAgent
+    from runtime.llm import client_for
+    from runtime.memory import MemoryLoader
+
+    memory = MemoryLoader(REPO_ROOT)
+    audit_path = REPO_ROOT / "runtime" / "audit" / "mutation_decisions.jsonl"
+    audit = AuditLogger(path=audit_path)
+    llm = client_for("reviewer", provider=provider)
+    reviewer = CodeReviewerAgent(llm=llm, memory=memory, audit=audit)
+
+    console.print(
+        f"[cyan]Mutation suite — {len(cases)} cases, "
+        f"reviewer={llm.provider}/{llm.model}[/cyan]\n"
+    )
+    report = run_mutation_suite(cases, reviewer)
+    console.print(report.render())
+
+    table = Table(title="\nPer-case detail", show_header=True)
+    table.add_column("Class")
+    table.add_column("Case")
+    table.add_column("Loose")
+    table.add_column("Strict")
+    table.add_column("Verdict summary")
+    for r in report.cases:
+        loose_mark = "[green]✓[/green]" if r.caught_loose else "[red]✗[/red]"
+        strict_mark = "[green]✓[/green]" if r.caught_strict else "[red]✗[/red]"
+        summary = r.error if r.error else r.verdict_summary
+        table.add_row(r.bug_class, r.case_name, loose_mark, strict_mark, summary)
+    console.print(table)
+
+    if report.strict_rate < 0.50:
+        console.print(
+            "\n[red]Strict catch rate < 50% — Reviewer prompt sertleştirme "
+            "tetiği. Roadmap 2.3 acceptance criteria not met.[/red]"
+        )
+        raise typer.Exit(1)
+    if report.strict_rate < 0.70:
+        console.print(
+            "\n[yellow]Strict catch rate < 70% — target henüz tutmuyor. "
+            "Acceptable for v0.9 lansman ama prompt iteration önerilir.[/yellow]"
+        )
+
+
 if __name__ == "__main__":
     app()
