@@ -69,6 +69,7 @@ def _parse_skill_file(path: Path, rel_path: str) -> Skill:
         app_class=_as_list(fm.get("triggers.app_class")),
         language=_as_list(fm.get("triggers.language")),
         keywords=_as_list(fm.get("triggers.keywords")),
+        keywords_blocklist=_as_list(fm.get("triggers.keywords_blocklist")),
     )
 
     return Skill(

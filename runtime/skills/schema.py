@@ -19,11 +19,22 @@ class SkillTriggers(BaseModel):
     app_class: list[str] = Field(default_factory=list)
     language: list[str] = Field(default_factory=list)
     keywords: list[str] = Field(default_factory=list)
+    keywords_blocklist: list[str] = Field(default_factory=list)
+    """Negative-keyword filter. When any phrase in this list appears in the
+    task haystack (title + description + module_scope), the skill is
+    rejected even if every positive trigger matched. Lets a brief opt out
+    of a default-positive skill (e.g. "no docker", "without docker")."""
 
     def is_universal(self) -> bool:
         """A skill is universal iff it has no triggers at all — applies
         anywhere the audience filter allows."""
-        return not (self.tier or self.app_class or self.language or self.keywords)
+        return not (
+            self.tier
+            or self.app_class
+            or self.language
+            or self.keywords
+            or self.keywords_blocklist
+        )
 
     def specificity(self) -> int:
         """Higher = more specific = preferred when the budget is tight.
@@ -89,6 +100,13 @@ class Skill(BaseModel):
         if self.triggers.keywords:
             haystack = description.lower()
             if not any(kw.lower() in haystack for kw in self.triggers.keywords):
+                return False
+
+        if self.triggers.keywords_blocklist:
+            haystack = description.lower()
+            if any(
+                kw.lower() in haystack for kw in self.triggers.keywords_blocklist
+            ):
                 return False
 
         return True
