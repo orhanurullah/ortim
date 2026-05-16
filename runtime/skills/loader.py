@@ -105,6 +105,7 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
 _LIST_RE = re.compile(r"^\[(.*)\]$")
 _KV_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*:\s*(.*)$")
 _INDENTED_NESTED_RE = re.compile(r"^\s{2,}([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
+_BULLET_RE = re.compile(r"^\s+-\s+(.+)$")
 
 
 def _parse_frontmatter(text: str) -> dict[str, object]:
@@ -112,29 +113,66 @@ def _parse_frontmatter(text: str) -> dict[str, object]:
       key: value
       key: [a, b, c]
       key:
+        - item
+        - item
+      key:
         nested_key: value
         nested_key: [a, b]
+        nested_key:
+          - item
+          - item
     Nested keys are exposed as dotted names: `triggers.tier`.
     """
     out: dict[str, object] = {}
     current_parent: str | None = None
+    pending_bullet_key: str | None = None
     for raw in text.splitlines():
         line = raw.rstrip()
         if not line.strip() or line.lstrip().startswith("#"):
             continue
+
+        bullet = _BULLET_RE.match(line)
+        if bullet:
+            if pending_bullet_key is None:
+                raise ValueError(
+                    f"unexpected bullet — no preceding key with empty value: {line!r}"
+                )
+            item = bullet.group(1).strip().strip('"').strip("'")
+            existing = out.get(pending_bullet_key)
+            if isinstance(existing, list):
+                existing.append(item)
+            else:
+                out[pending_bullet_key] = [item]
+            continue
+
         nested = _INDENTED_NESTED_RE.match(line)
         if nested and current_parent is not None:
             key = f"{current_parent}.{nested.group(1)}"
-            out[key] = _parse_scalar_or_list(nested.group(2))
+            value = nested.group(2).strip()
+            if value == "":
+                # Either a deeper nested object (not supported beyond
+                # one level) or a bullet list belonging to this key.
+                pending_bullet_key = key
+            else:
+                pending_bullet_key = None
+                out[key] = _parse_scalar_or_list(value)
             continue
+
+        # Fresh top-level key — any pending bullet collection is closed.
+        pending_bullet_key = None
+
         m = _KV_RE.match(line)
         if not m:
             raise ValueError(f"frontmatter line not understood: {line!r}")
         key = m.group(1)
         value = m.group(2).strip()
         if value == "":
-            # The next indented lines belong to this parent.
+            # The next indented lines belong to this parent — could be a
+            # nested object (sets current_parent) OR a flat bullet list
+            # (sets pending_bullet_key). Arm both; whichever shape the
+            # next line takes wins.
             current_parent = key
+            pending_bullet_key = key
             continue
         out[key] = _parse_scalar_or_list(value)
         current_parent = None

@@ -132,3 +132,89 @@ def test_loader_list_values_strip_quotes_and_whitespace() -> None:
     skills = load_all_skills(repo)
     assert skills[0].triggers.tier == ["T1", "T2", "T3"]
     assert skills[0].triggers.keywords == ["test", "import", "module"]
+
+
+def test_loader_parses_nested_bullet_list() -> None:
+    """YAML-style bullet list under a nested key: triggers.keywords as
+    a `-`-prefixed multi-line list, the shape used by the
+    security/auth-review-checklist skills."""
+    repo = _make_skill_repo(
+        {
+            "security/auth.md": (
+                "---\n"
+                "name: auth-review-checklist\n"
+                "description: t\n"
+                "audience: [reviewer, human]\n"
+                "triggers:\n"
+                "  keywords:\n"
+                "    - auth\n"
+                "    - login\n"
+                "    - signup\n"
+                "    - jwt\n"
+                "---\n\nbody"
+            )
+        }
+    )
+    skills = load_all_skills(repo)
+    assert len(skills) == 1
+    s = skills[0]
+    assert s.name == "auth-review-checklist"
+    assert s.audience == ["reviewer", "human"]
+    assert s.triggers.keywords == ["auth", "login", "signup", "jwt"]
+
+
+def test_loader_parses_flat_bullet_list() -> None:
+    """YAML-style bullet list under a top-level key (no nesting)."""
+    repo = _make_skill_repo(
+        {
+            "x/flat.md": (
+                "---\n"
+                "name: flat-list\n"
+                "description: t\n"
+                "audience:\n"
+                "  - worker\n"
+                "  - reviewer\n"
+                "---\n\nbody"
+            )
+        }
+    )
+    skills = load_all_skills(repo)
+    assert skills[0].audience == ["worker", "reviewer"]
+
+
+def test_loader_mixed_inline_and_bullet_under_same_parent() -> None:
+    """A nested key with an inline list followed by another nested key
+    with a bullet list — both forms must be parsed in the same block."""
+    repo = _make_skill_repo(
+        {
+            "x/mixed.md": (
+                "---\n"
+                "name: mixed\n"
+                "description: t\n"
+                "triggers:\n"
+                "  tier: [T2, T3]\n"
+                "  keywords:\n"
+                "    - auth\n"
+                "    - token\n"
+                "  language: [Python]\n"
+                "---\n\nbody"
+            )
+        }
+    )
+    skills = load_all_skills(repo)
+    s = skills[0]
+    assert s.triggers.tier == ["T2", "T3"]
+    assert s.triggers.keywords == ["auth", "token"]
+    assert s.triggers.language == ["Python"]
+
+
+def test_security_review_checklist_skills_load_from_disk() -> None:
+    """Regression: skills/security/{auth,payment,pii}-review-checklist.md
+    use the bullet-list keyword form and must now load. Before this
+    fix they failed silently with a stderr warning, leaving review
+    audiences without their checklist."""
+    skills = load_all_skills(REPO_ROOT)
+    names = {s.name for s in skills}
+    assert "auth-review-checklist" in names
+    assert "payment-review-checklist" in names
+    assert "pii-review-checklist" in names
