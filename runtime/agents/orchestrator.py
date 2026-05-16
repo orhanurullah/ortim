@@ -16,6 +16,7 @@ from runtime.babel.intent import _strip_code_fences
 from runtime.llm import LLMClient
 from runtime.memory import MemoryLoader
 from runtime.orchestrator import CyclicDAG, MissingDependency, TaskDAG
+from runtime.scope import ScopeManifest
 
 
 # Item 42 — every emitted task.module_scope MUST match a module declared in
@@ -188,6 +189,7 @@ class OrchestratorAgent:
         rfc_markdown: str,
         project_id: str,
         prior_dag: TaskDAG | None = None,
+        scope: ScopeManifest | None = None,
     ) -> TaskDAG:
         """Generate a TaskDAG from the RFC.
 
@@ -222,12 +224,34 @@ class OrchestratorAgent:
             else []
         )
 
+        # Faz 1.1 — scope block telling the LLM how to phase-tag emitted
+        # TaskSpecs. Without this, `phase` falls back to its default (1),
+        # which silently collapses Phase 2+ work into the MVP.
+        scope_section = ""
+        if scope is not None and scope.features:
+            scope_section = (
+                "## Locked Scope (HARD — phase per TaskSpec)\n"
+                + scope.to_prompt_block()
+                + "\n\n**HARD RULE — emit `phase` field per TaskSpec.** Each "
+                "TaskSpec in the DAG MUST include a `phase: int` field. Read "
+                "the RFC §7 two-tier Module Breakdown table and assign:\n"
+                "  - `phase: 1` when the task supports a Phase-1 (MVP) row\n"
+                "  - `phase: 2` (or higher) when it supports a deferred row\n"
+                "A task that touches both phases is split into two tasks "
+                "(one per phase) — do NOT emit a single task with mixed "
+                "scope. Default phase=1 is only safe when no scope block "
+                "is present; when this block IS present, omitting the "
+                "phase field is a contract violation that triggers retry.\n"
+            )
+
         previous_error: str | None = None
         for attempt in range(1, self.MAX_RETRIES + 1):
             sections = [
                 f"Project ID: {project_id}\n",
                 "RFC:\n\n```\n" + rfc_markdown + "\n```\n",
             ]
+            if scope_section:
+                sections.append(scope_section)
             if is_extend:
                 sections.append(
                     "## Extend cycle context (HARD constraints)\n"

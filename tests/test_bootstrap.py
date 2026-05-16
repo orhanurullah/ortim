@@ -648,3 +648,246 @@ def test_framework_to_packages_recognizes_common_variants() -> None:
     # Empty/None
     assert _framework_to_packages(None) == []
     assert _framework_to_packages("") == []
+
+
+# ---------------------------------------------------------------------
+# T0/web — single-file CLI tier (C-1 ship)
+# ---------------------------------------------------------------------
+
+
+def _t0_python_stack(test_cmd: str = "pytest") -> LockedStack:
+    return LockedStack(
+        tier="T0",
+        app_class="web",
+        language="Python",
+        primary_framework="Typer",
+        package_manager="pip",
+        test_cmd=test_cmd,
+        run_cmd="python -m app",
+        key_libraries=["typer", "pydantic"],
+    )
+
+
+def _t0_go_stack(test_cmd: str = "go test ./...") -> LockedStack:
+    return LockedStack(
+        tier="T0",
+        app_class="web",
+        language="Go",
+        primary_framework="Cobra",
+        package_manager="go modules",
+        test_cmd=test_cmd,
+        run_cmd="./bin/app",
+        key_libraries=["cobra"],
+    )
+
+
+def test_t0_web_python_writes_pyproject_and_python_gitignore(tmp_path: Path) -> None:
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="todo-cli",
+        locked_stack=_t0_python_stack(),
+    )
+    pyproject = tmp_path / "pyproject.toml"
+    assert pyproject.exists(), "T0/web Python should write pyproject.toml"
+    body = pyproject.read_text(encoding="utf-8")
+    assert 'name = "todo-cli"' in body
+    assert "pytest" in body
+    assert 'requires-python = ">=3.11"' in body
+
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "__pycache__/" in gitignore
+    assert ".venv/" in gitignore
+    # T0 must NOT pull in the T2 web template
+    assert "node_modules/" not in gitignore
+
+
+def test_t0_web_python_does_not_write_t2_artifacts(tmp_path: Path) -> None:
+    """Regression: T0/web Python landed in the T2 branch in an earlier
+    sketch (because of overlapping `tier in ("T1","T2","T3")` plus a
+    naive fallback). Pin that none of the TypeScript-shaped files leak
+    in for a Python T0 project."""
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=_t0_python_stack(),
+    )
+    assert not (tmp_path / "package.json").exists()
+    assert not (tmp_path / "tsconfig.json").exists()
+    assert not (tmp_path / "vite.config.ts").exists()
+
+
+def test_t0_web_go_writes_go_mod_and_go_gitignore(tmp_path: Path) -> None:
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cmd"],
+        tier="T0",
+        app_class="web",
+        project_name="todo cli",
+        locked_stack=_t0_go_stack(),
+    )
+    gomod = tmp_path / "go.mod"
+    assert gomod.exists()
+    body = gomod.read_text(encoding="utf-8")
+    assert "module example.com/todo-cli" in body  # name slugified
+    assert "go 1.22" in body
+
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "bin/" in gitignore
+    assert "vendor/" in gitignore
+    assert "node_modules/" not in gitignore
+
+
+def test_t0_web_no_locked_stack_no_rfc_skips_language_files(tmp_path: Path) -> None:
+    """When neither LockedStack nor RFC signals language, T0/web
+    degrades to the universal layout (gitignore + modules only). We do
+    NOT guess Python or Go — guessing is what pre-LockedStack drift
+    was. Worker writes feature code in the module folder; the project
+    can be promoted to LockedStack later via M2 dialog."""
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cmd"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=None,
+    )
+    assert not (tmp_path / "pyproject.toml").exists()
+    assert not (tmp_path / "go.mod").exists()
+    gitignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
+    assert "__pycache__/" not in gitignore
+    assert "bin/" not in gitignore
+
+
+def test_t0_web_rfc_scan_fallback_resolves_python(tmp_path: Path) -> None:
+    """Pre-M2 path: no LockedStack but the RFC mentions Python/pytest.
+    Bootstrap must still pick up the signal and write pyproject.toml."""
+    (tmp_path / "RFC.md").write_text(
+        "## 4. Tech Stack\n\n"
+        "Language: Python 3.11. Testing via pytest.\n",
+        encoding="utf-8",
+    )
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="rfc-python",
+        locked_stack=None,
+    )
+    assert (tmp_path / "pyproject.toml").exists()
+
+
+def test_t0_web_python_writes_ai_factory_env_with_pytest(tmp_path: Path) -> None:
+    """LockedStack.test_cmd is the source of truth for `.ai-factory.env`.
+    For a T0 Python stack the locked test_cmd is `pytest`."""
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="todo-cli",
+        locked_stack=_t0_python_stack(),
+    )
+    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    assert 'AI_FACTORY_TEST_CMD="pytest"' in ai_env
+
+
+def test_rfc_scan_does_not_match_rust_inside_trust(tmp_path: Path) -> None:
+    """Regression — surfaced by the C-4 T0/web Python proof-point.
+    RFC contained the phrase "internal calls trust types", and the
+    `_infer_test_cmd_from_rfc` substring match latched onto `rust`
+    inside `trust`, writing `AI_FACTORY_TEST_CMD="cargo test"` to a
+    Python project. Word-boundary regex prevents this class entirely."""
+    (tmp_path / "RFC.md").write_text(
+        "## 4. Tech Stack\n\n"
+        "Language: Python. The error handler validates at boundaries; "
+        "internal calls trust types.\n",
+        encoding="utf-8",
+    )
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=None,
+    )
+    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    assert "cargo test" not in ai_env, (
+        "RFC scan should not match 'rust' inside 'trust' (regression)"
+    )
+    assert "pytest" in ai_env
+
+
+def test_rfc_scan_does_not_match_dart_inside_other_words(tmp_path: Path) -> None:
+    """Same class as the rust-in-trust regression: 'dart' inside
+    'depart', 'regard', 'standard' etc. must not trigger Flutter."""
+    (tmp_path / "RFC.md").write_text(
+        "## 4. Tech Stack\n\n"
+        "Language: Python. The CLI accepts standard input; arguments "
+        "depart from convention. Logs follow no particular regard.\n",
+        encoding="utf-8",
+    )
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=None,
+    )
+    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    assert "flutter test" not in ai_env
+    assert "pytest" in ai_env
+
+
+def test_rfc_scan_still_matches_real_language_tokens(tmp_path: Path) -> None:
+    """Word boundaries must not break legitimate matches. The fix
+    should accept `Rust`, `Cargo`, `Dart` when they appear as standalone
+    words (Architect §4 vocabulary), only rejecting collisions inside
+    longer words."""
+    (tmp_path / "RFC.md").write_text(
+        "## 4. Tech Stack\n\n"
+        "Language: Rust. Build: cargo build.\n",
+        encoding="utf-8",
+    )
+    bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=None,
+    )
+    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    assert "cargo test" in ai_env
+
+
+def test_t0_web_python_second_call_is_noop(tmp_path: Path) -> None:
+    """Idempotency must hold for T0 too — re-bootstrapping a workspace
+    after a manual edit should not clobber pyproject.toml."""
+    stack = _t0_python_stack()
+    first = bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=stack,
+    )
+    second = bootstrap_workspace_layout(
+        tmp_path,
+        modules=["cli"],
+        tier="T0",
+        app_class="web",
+        project_name="x",
+        locked_stack=stack,
+    )
+    assert first  # first run produced something
+    assert second == []  # second is no-op

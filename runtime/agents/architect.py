@@ -23,6 +23,7 @@ from runtime.babel.intent import _strip_code_fences
 from runtime.codebase import CodebaseSummary
 from runtime.llm import LLMClient
 from runtime.memory import MemoryLoader
+from runtime.scope import ScopeManifest
 
 _CODEBASE_PROMPT_BUDGET_BYTES = 2000
 
@@ -146,6 +147,8 @@ class ArchitectAgent:
         app_class: str = "web",
         codebase: CodebaseSummary | None = None,
         locked_stack: LockedStack | None = None,
+        scope: ScopeManifest | None = None,
+        user_stack_hints: list[str] | None = None,
     ) -> str:
         system_prompt = self.memory.load_agent_prompt("architect")
         principles = self.memory.load_l1_principles()
@@ -183,6 +186,29 @@ class ArchitectAgent:
                 "question in §1, do NOT embed it in §4.\n"
             )
         else:
+            # Faz 1.2 B-2 fix — when locked_stack is None but Babel
+            # extracted explicit user_stack_hints, those names win over
+            # the tier-default constraint. Proof-point bf761fff02b0 showed
+            # T2/BaaS tier silently substituted Supabase+PostgreSQL even
+            # when the user wrote "Python + FastAPI + SQLite". The hint
+            # block sits ABOVE the tier-constraint block so the LLM sees
+            # user names first.
+            hint_block = ""
+            if user_stack_hints:
+                hint_block = (
+                    "\n\n## User-Named Stack (HARD — quote verbatim in §4)\n\n"
+                    "The user explicitly named these technologies in the brief:\n"
+                    + "\n".join(f"- {h}" for h in user_stack_hints)
+                    + "\n\n**HARD RULE.** §4 Tech Stack MUST use these exact names. "
+                    "Use tier defaults ONLY to fill gaps the user did not name "
+                    "(e.g. user said 'Python' but no framework — fill from tier "
+                    "defaults). Never SUBSTITUTE a user-named tool with a tier "
+                    "default (e.g. user said 'SQLite' — do NOT pick PostgreSQL, "
+                    "Supabase, or any other database). If a user-named tool "
+                    "appears wrong for the selected tier, surface the conflict "
+                    "as `**[NEEDS-INPUT]**` in §1, do NOT silently substitute.\n"
+                )
+
             # Item 17 fix: thread the (tier, app_class) language/framework
             # constraint into the prompt so Architect Call 2 cannot pick a
             # stack inconsistent with the deterministic scorer's tier —
@@ -213,9 +239,47 @@ class ArchitectAgent:
                         "but do NOT silently switch stacks. Any stack outside "
                         "this list is a contract violation that breaks bootstrap "
                         "and the test runner downstream.\n"
+                        + (
+                            "\n**Hint block override:** when a `User-Named Stack` "
+                            "section appears above, user names take precedence "
+                            "over this constraint for the slots the user filled. "
+                            "The constraint only governs slots the user left blank.\n"
+                            if user_stack_hints
+                            else ""
+                        )
                     )
             else:
                 stack_block = ""
+
+            # Hints come BEFORE the tier-constraint block so the LLM
+            # reads user names first.
+            stack_block = hint_block + stack_block
+
+        # Faz 1.1 — scope block. When the user has locked an MVP scope,
+        # the Architect must treat Phase 1 features as the deliverable for
+        # this RFC and explicitly defer Phase 2+ to a separate sub-section
+        # of §7 Module Breakdown. Without this, the agent collapses all
+        # features into one breakdown — the bug §4 of the self-audit
+        # identified as "MVP yapısal olarak yok".
+        scope_block = ""
+        if scope is not None and scope.features:
+            scope_block = (
+                "\n\n## Locked Scope (HARD — Phase 1 vs Phase 2+ split)\n\n"
+                + scope.to_prompt_block()
+                + "\n\n**HARD RULE FOR §7 'Module Breakdown'.** Emit a two-tier "
+                "table with these EXACT columns:\n\n"
+                "| Module | Phase 1 (MVP) | Phase 2+ (Deferred) |\n"
+                "|---|---|---|\n"
+                "Each row names a module; the Phase 1 cell lists ONLY work that "
+                "supports Phase-1 features above; the Phase 2+ cell lists work "
+                "that supports deferred features (or `—` if the module has no "
+                "deferred work). A module that exists ONLY for deferred features "
+                "still appears in the table — its Phase 1 cell is `—`. "
+                "The downstream Orchestrator (DAG generation) reads this table "
+                "to tag each TaskSpec with a `phase` field; tasks without a "
+                "phase signal here get phase=1 by default, which is a silent "
+                "scope leak — never leave a Phase 2+ feature without an entry.\n"
+            )
 
         full_system = (
             f"{system_prompt}\n\n"
@@ -224,6 +288,7 @@ class ArchitectAgent:
             f"## Selected Tier (locked by deterministic scorer)\n\n{tier_brief}"
             f"{tier_doc_block}"
             f"{stack_block}"
+            f"{scope_block}"
         )
 
         codebase_block = ""
@@ -318,6 +383,13 @@ class ArchitectAgent:
                 else stack_constraint(tier_score.tier.value, app_class)
             ),
             used_locked_stack=locked_stack is not None,
+            used_scope=scope is not None,
+            scope_phase_1_count=(
+                len(scope.phase_1_features()) if scope is not None else 0
+            ),
+            scope_deferred_count=(
+                len(scope.deferred_features()) if scope is not None else 0
+            ),
             key_libraries_drift_attempts=len(drift_corrections),
             **response.audit_fields(),
         )

@@ -61,6 +61,13 @@ Read the **approved** RFC and produce a Task DAG: a list of atomic, independentl
     - Test utilities → `shared/test-utils/`
     Tasks that touch these MUST set `module_scope: "shared"` and only write paths under `shared/`. **`shared` is only a valid module_scope when RFC §7 explicitly lists it — see Rule 13.**
 
+14. **`task.phase` MUST be emitted when a Locked Scope block is present in your context.** Faz 1.1 — the user has split features into Phase 1 (MVP) and Phase 2+ (deferred). Read RFC §7's two-tier table and tag each TaskSpec:
+    - `phase: 1` when the task supports a Phase-1 row
+    - `phase: 2` (or higher) when it supports a deferred row
+    - A task that would touch both phases is **split into two tasks** — one per phase. Never emit a single task with mixed scope.
+    - When no `Locked Scope` block is in context (pre-1.1 workspace), omit `phase` and the default (1) applies — backward-compat.
+    - `ortim run-all --phase 1` filters at execution time; phase=2+ tasks stay PENDING until the user explicitly runs them. Tagging the wrong phase silently leaks Phase 2+ work into the MVP run.
+
 13. **`task.module_scope` MUST be a verbatim module from RFC §7 Module Breakdown.** Read the §7 table (or bullet list). The set of valid `module_scope` values for this DAG is EXACTLY the set of module names in §7. Do NOT introduce `shared`, `common`, `core`, `utils`, or any other synthetic catch-all if it is not listed in §7. If multiple small files belong to the same RFC module (e.g. `db/init.ts` and `db/schema.ts`), they share that module's scope — never collapse two distinct RFC modules into a single synthetic one. **Validator behavior:** after the DAG is emitted, the runtime parses RFC §7's module names and rejects the DAG if any `task.module_scope` is missing from that set; the rejection feedback names the offending tasks and the allowed set. You get up to 3 attempts before the orchestrator hard-fails — fix it on the first try by quoting §7 exactly.
 
 ## Task Granularity Heuristics

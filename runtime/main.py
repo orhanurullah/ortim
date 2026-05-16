@@ -632,17 +632,40 @@ def run(
         prd_path.write_text(prd, encoding="utf-8")
         console.print(f"[green]PRD drafted:[/green] {prd_path}")
 
+        # Faz 1.1 — legacy (dialog-off) path also lands at MVP_SCOPE_LOCKING,
+        # not directly at G1. Seed scope.json so the next-step UX has
+        # something for `ortim scope` to render.
+        from runtime.scope import save_scope, scope_path, suggest_initial_scope
+
+        if not scope_path(workspace).exists():
+            seeded = suggest_initial_scope(
+                project_id=project.id,
+                must_have_features=intent.must_have_features,
+                nice_to_have_features=intent.nice_to_have_features,
+            )
+            save_scope(workspace, seeded)
+            audit.log(
+                "scope_seeded",
+                project_id=project.id,
+                feature_count=len(seeded.features),
+                phase_1_count=len(seeded.phase_1_features()),
+                deferred_count=len(seeded.deferred_features()),
+            )
+
         project.transition(
-            ProjectState.PRD_AWAITING_APPROVAL,
+            ProjectState.MVP_SCOPE_LOCKING,
             actor="analyst",
-            note="PRD ready for review",
+            note="PRD drafted; entering scope dialog before G1",
         )
         project.save(WORKSPACE_ROOT)
         console.print(
-            f"\n[yellow]HITL Gate G1:[/yellow] PRD'yi gözden geçir, onaylamak için:"
+            f"\n[yellow]Next:[/yellow] her feature'a phase ata, sonra G1'e geç:"
         )
         console.print(
-            f"  ortim advance {project.id} prd_approved --note 'reviewed'"
+            f"  ortim scope {project.id}            "
+            "(interactive)\n"
+            f"  ortim scope {project.id} --lock     "
+            "(skip-edit + advance to G1)"
         )
 
     rfc_path_check = workspace / "RFC.md"
@@ -703,6 +726,46 @@ def run(
             gp_inputs = architect.extract_inputs(
                 prd_text, project.id, codebase=codebase_summary
             )
+
+            # Faz 1.2 B-5 fix — deterministic override of LLM-inferred
+            # app_class when the user's brief explicitly named a non-web
+            # framework. Architect Call 1 silently defaults to "web" when
+            # the PRD has no mobile/desktop signal even though Babel
+            # captured "Flutter" / "Tauri" in user_stack_hints. Proof-point
+            # 45ed19809dec: Flutter habit tracker → tier T2 BaaS. After
+            # this gate, the same brief should land at M1 (mobile).
+            from runtime.architecture import AppClass
+            from runtime.babel import app_class_from_hints
+
+            intent_path = workspace / "intent.json"
+            if intent_path.exists():
+                try:
+                    _intent = StructuredIntent.model_validate_json(
+                        intent_path.read_text(encoding="utf-8")
+                    )
+                    # Faz 1.2 B-1 — forward hints to tier scorer so it can
+                    # disqualify T2 BaaS when user named self-hosted infra.
+                    gp_inputs.user_stack_hints = list(_intent.user_stack_hints)
+                    override = app_class_from_hints(_intent.user_stack_hints)
+                    if override and override != gp_inputs.app_class.value:
+                        audit.log(
+                            "app_class_overridden_from_hints",
+                            project_id=project.id,
+                            llm_picked=gp_inputs.app_class.value,
+                            deterministic_override=override,
+                            hints=list(_intent.user_stack_hints),
+                        )
+                        console.print(
+                            f"[yellow]app_class override:[/yellow] LLM said "
+                            f"'{gp_inputs.app_class.value}', user hints "
+                            f"({', '.join(_intent.user_stack_hints)}) → "
+                            f"'{override}'"
+                        )
+                        gp_inputs.app_class = AppClass(override)
+                except Exception:
+                    # Best-effort override; never block the chain.
+                    pass
+
             gp_path.write_text(
                 gp_inputs.model_dump_json(indent=2), encoding="utf-8"
             )
@@ -722,6 +785,29 @@ def run(
             )
 
         console.print("[cyan]Architect:[/cyan] drafting RFC...")
+        # Faz 1.1 — pass the locked scope so RFC §7 can emit a two-tier
+        # module table. None for pre-1.1 workspaces or projects that
+        # skipped MVP_SCOPE_LOCKING (advance-by-alias path).
+        from runtime.scope import load_scope, scope_path
+
+        scope_manifest = (
+            load_scope(workspace) if scope_path(workspace).exists() else None
+        )
+
+        # Faz 1.2 B-2 — when there's no locked_stack (legacy/dialog-off
+        # path), read the user_stack_hints captured by Babel and forward
+        # them so the Architect honors user-named tech over tier defaults.
+        intent_path = workspace / "intent.json"
+        user_hints: list[str] = []
+        if locked_stack is None and intent_path.exists():
+            try:
+                _intent = StructuredIntent.model_validate_json(
+                    intent_path.read_text(encoding="utf-8")
+                )
+                user_hints = list(_intent.user_stack_hints)
+            except Exception:
+                user_hints = []
+
         rfc = architect.draft_rfc(
             prd_text,
             tier_score,
@@ -730,6 +816,8 @@ def run(
             app_class=gp_inputs.app_class.value,
             codebase=codebase_summary,
             locked_stack=locked_stack,
+            scope=scope_manifest,
+            user_stack_hints=user_hints,
         )
         rfc_path = workspace / "RFC.md"
         rfc_path.write_text(rfc, encoding="utf-8")
@@ -777,8 +865,19 @@ def run(
             raise typer.Exit(1)
         orchestrator_agent = OrchestratorAgent(orchestrator_llm, memory, audit)
         console.print("[cyan]Orchestrator:[/cyan] generating task DAG (with retry on validation failure)...")
+        # Faz 1.1 — feed scope into Orchestrator so each TaskSpec carries
+        # a `phase` field. Falls back to None when scope.json is absent
+        # (pre-1.1 or advance-by-alias path); all tasks default to phase=1.
+        from runtime.scope import load_scope as _load_scope
+        from runtime.scope import scope_path as _scope_path
+
+        orch_scope = (
+            _load_scope(workspace) if _scope_path(workspace).exists() else None
+        )
         try:
-            dag = orchestrator_agent.generate_dag(rfc_text, project.id)
+            dag = orchestrator_agent.generate_dag(
+                rfc_text, project.id, scope=orch_scope
+            )
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
             project.transition(
@@ -786,6 +885,35 @@ def run(
             )
             project.save(WORKSPACE_ROOT)
             raise typer.Exit(1)
+
+        # Faz 1.5 — tag tasks with sensitive categories (auth/pii/payment).
+        # The runner consults this list after reviewers approve and gates
+        # the merge on human sign-off when any category fires.
+        from runtime.security import detect_sensitive_categories
+
+        sensitive_tagged: list[tuple[str, list[str]]] = []
+        for task in dag.tasks:
+            cats = detect_sensitive_categories(task)
+            if cats:
+                task.sensitive_categories = cats
+                sensitive_tagged.append((task.id, cats))
+        if sensitive_tagged:
+            audit.log(
+                "dag_sensitive_categories_tagged",
+                project_id=project.id,
+                tagged_count=len(sensitive_tagged),
+                tagged=[
+                    {"task_id": tid, "categories": cats}
+                    for tid, cats in sensitive_tagged
+                ],
+            )
+            console.print(
+                f"[yellow]Security gate:[/yellow] {len(sensitive_tagged)} "
+                f"task(s) tagged for human review after reviewers pass: "
+                + ", ".join(
+                    f"{tid}({'/'.join(cats)})" for tid, cats in sensitive_tagged
+                )
+            )
 
         # Persist DAG and per-task markdown files
         (workspace / "task_dag.json").write_text(
@@ -1048,7 +1176,7 @@ def show(
         "current",
         "--artifact",
         "-a",
-        help="intent | stack | prd | current",
+        help="intent | stack | prd | scope | current",
     ),
 ) -> None:
     """Aktif (ya da seçili) dialog artifact'ini konsola bas."""
@@ -1069,10 +1197,12 @@ def show(
             requested = "stack"
         elif project.state == ProjectState.PRD_DIALOG:
             requested = "prd"
+        elif project.state == ProjectState.MVP_SCOPE_LOCKING:
+            requested = "scope"
         else:
             console.print(
                 f"[yellow]Project is in '{project.state.value}', not a dialog "
-                "state. Pass --artifact intent|stack|prd explicitly.[/yellow]"
+                "state. Pass --artifact intent|stack|prd|scope explicitly.[/yellow]"
             )
             raise typer.Exit(1)
 
@@ -1083,6 +1213,13 @@ def show(
         md = stack.to_markdown() if stack is not None else None
     elif requested == "prd":
         md = load_prd_md(workspace)
+    elif requested == "scope":
+        from runtime.scope import load_scope, scope_path
+
+        if not scope_path(workspace).exists():
+            md = None
+        else:
+            md = load_scope(workspace).to_markdown()
     else:
         console.print(f"[red]Unknown artifact '{artifact}'[/red]")
         raise typer.Exit(1)
@@ -1760,27 +1897,249 @@ def extensions_cmd(
 
 
 def _lock_prd(project, workspace, audit, memory) -> None:
-    """PRD_DIALOG → PRD_AWAITING_APPROVAL. No further drafting; this is
-    the existing G1 HITL gate. The user inspects PRD.md and runs
-    `ortim advance <id> prd_approved` to continue."""
+    """PRD_DIALOG → MVP_SCOPE_LOCKING. Faz 1.1: PRD draft is locked but
+    G1 is not yet open; the user must first walk each feature through
+    `ortim scope <id>` and assign a phase. `_lock_prd` seeds scope.json
+    from the StructuredIntent feature lists so the scope command has
+    something to show on first invocation."""
+    from runtime.babel import StructuredIntent
+    from runtime.scope import save_scope, scope_path, suggest_initial_scope
+
+    intent_path = workspace / "intent.json"
+    if not intent_path.exists():
+        console.print(
+            f"[red]intent.json missing at {intent_path} — cannot seed scope.[/red]"
+        )
+        raise typer.Exit(1)
+
+    # Seed scope.json only on the first PRD lock — re-locks preserve the
+    # user's edits. Re-seeding would silently overwrite phase assignments.
+    if not scope_path(workspace).exists():
+        try:
+            structured = StructuredIntent.model_validate_json(
+                intent_path.read_text(encoding="utf-8")
+            )
+            seeded = suggest_initial_scope(
+                project_id=project.id,
+                must_have_features=structured.must_have_features,
+                nice_to_have_features=structured.nice_to_have_features,
+            )
+        except Exception:
+            # Brownfield stub intent.json (no must_have_features) — seed
+            # an empty scope; user adds features manually via `ortim scope`.
+            from runtime.scope import ScopeManifest
+
+            seeded = ScopeManifest(project_id=project.id, features=[])
+        save_scope(workspace, seeded)
+        audit.log(
+            "scope_seeded",
+            project_id=project.id,
+            feature_count=len(seeded.features),
+            phase_1_count=len(seeded.phase_1_features()),
+            deferred_count=len(seeded.deferred_features()),
+        )
+
     project.transition(
-        ProjectState.PRD_AWAITING_APPROVAL,
+        ProjectState.MVP_SCOPE_LOCKING,
         actor="lock",
-        note="PRD locked; G1 HITL gate open",
+        note="PRD locked; entering scope dialog before G1",
     )
     project.save(WORKSPACE_ROOT)
     audit.log(
         "dialog_lock",
         project_id=project.id,
         from_state=ProjectState.PRD_DIALOG.value,
-        to_state=ProjectState.PRD_AWAITING_APPROVAL.value,
+        to_state=ProjectState.MVP_SCOPE_LOCKING.value,
     )
     console.print(
         f"[green]PRD locked.[/green] State: "
         f"[cyan]{project.state.value}[/cyan]\n"
-        f"\n[yellow]HITL Gate G1:[/yellow] PRD'yi gözden geçir, onaylamak için:\n"
-        f"  [cyan]ortim advance {project.id} prd_approved --note 'reviewed'[/cyan]"
+        f"\n[yellow]Next:[/yellow] her feature'a phase ata, sonra G1'e geç:\n"
+        f"  [cyan]ortim scope {project.id}[/cyan]"
     )
+
+
+@app.command()
+def scope(
+    project_id: str,
+    show: bool = typer.Option(
+        False, "--show", help="Sadece mevcut scope.json'u tabloda göster, edit etme."
+    ),
+    lock_now: bool = typer.Option(
+        False, "--lock", help="İnteraktif edit'i atla, mevcut scope'u kilitleyip G1'e geç."
+    ),
+    reset: bool = typer.Option(
+        False, "--reset", help="scope.json'u intent.json'dan yeniden seed et (kullanıcı edit'leri silinir)."
+    ),
+    set_phase: list[str] = typer.Option(
+        None,
+        "--set",
+        help="Non-interaktif phase atama: --set '<feature substring>=<phase>'. Birden çok kez verilebilir.",
+    ),
+) -> None:
+    """Faz 1.1 — MVP scope locking. Her feature'a phase + priority ata.
+
+    Workflow:
+      1. `ortim lock` → state MVP_SCOPE_LOCKING'e geçer; scope.json seed olur
+      2. `ortim scope <id>` → tabloyu göster + her feature için phase prompt
+      3. `ortim scope <id> --lock` → scope kilitlenir, G1'e geçer
+
+    Headless (CI veya power-user) için:
+      ortim scope <id> --set "auth=1" --set "social login=2" --lock
+    """
+    from runtime.scope import load_scope, save_scope, scope_path, suggest_initial_scope
+
+    try:
+        project = Project.load(project_id, WORKSPACE_ROOT)
+    except FileNotFoundError:
+        console.print(f"[red]Project {project_id} not found[/red]")
+        raise typer.Exit(1)
+    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
+
+    if project.state != ProjectState.MVP_SCOPE_LOCKING:
+        console.print(
+            f"[red]Project is in '{project.state.value}', not MVP_SCOPE_LOCKING.[/red]\n"
+            "Run `ortim lock <id>` from PRD_DIALOG first, or `ortim advance "
+            f"{project.id} mvp_scope_locking` if you've already passed G1."
+        )
+        raise typer.Exit(1)
+
+    sp = scope_path(workspace)
+
+    if reset:
+        from runtime.babel import StructuredIntent
+
+        intent_path = workspace / "intent.json"
+        if not intent_path.exists():
+            console.print("[red]intent.json missing — cannot reset.[/red]")
+            raise typer.Exit(1)
+        structured = StructuredIntent.model_validate_json(
+            intent_path.read_text(encoding="utf-8")
+        )
+        manifest = suggest_initial_scope(
+            project_id=project.id,
+            must_have_features=structured.must_have_features,
+            nice_to_have_features=structured.nice_to_have_features,
+        )
+        save_scope(workspace, manifest)
+        console.print("[green]scope.json reset from intent.json[/green]")
+    else:
+        if not sp.exists():
+            console.print(
+                f"[red]scope.json missing at {sp}.[/red]\n"
+                "Re-run `ortim lock` from PRD_DIALOG to seed it, or pass --reset."
+            )
+            raise typer.Exit(1)
+        manifest = load_scope(workspace)
+
+    # Render the current scope as a table.
+    table = Table(title=f"Scope — {project.id}")
+    table.add_column("#", style="dim", width=3)
+    table.add_column("Phase", style="cyan", width=5)
+    table.add_column("Priority", width=8)
+    table.add_column("Source", style="dim", width=7)
+    table.add_column("Description")
+    for i, f in enumerate(manifest.features, 1):
+        table.add_row(str(i), str(f.phase), f.priority, f.source, f.description)
+    console.print(table)
+
+    if show:
+        return
+
+    # Non-interactive --set assignments (CI / power-user mode).
+    if set_phase:
+        for spec in set_phase:
+            if "=" not in spec:
+                console.print(
+                    f"[red]--set expects '<substring>=<phase>', got '{spec}'.[/red]"
+                )
+                raise typer.Exit(1)
+            substr, phase_str = spec.rsplit("=", 1)
+            try:
+                new_phase = int(phase_str.strip())
+            except ValueError:
+                console.print(f"[red]Phase must be int, got '{phase_str}'.[/red]")
+                raise typer.Exit(1)
+            substr_l = substr.strip().lower()
+            matched = 0
+            for f in manifest.features:
+                if substr_l in f.description.lower():
+                    f.phase = new_phase
+                    f.priority = "must" if new_phase == 1 else "later"
+                    matched += 1
+            if matched == 0:
+                console.print(
+                    f"[yellow]--set '{substr}': no feature matched (skipped).[/yellow]"
+                )
+            else:
+                console.print(
+                    f"[green]--set '{substr}' → phase {new_phase} "
+                    f"({matched} feature matched)[/green]"
+                )
+        save_scope(workspace, manifest)
+
+    # Interactive phase prompt (skipped when --lock or --set is supplied).
+    elif not lock_now:
+        console.print(
+            "\n[bold]Her feature için phase girin (1=MVP, 2+=sonraki). "
+            "Enter = mevcut değeri tut.[/bold]\n"
+        )
+        for f in manifest.features:
+            prompt = (
+                f"  '{f.description}' [phase={f.phase}]: "
+            )
+            raw = typer.prompt(prompt, default=str(f.phase), show_default=False)
+            try:
+                new_phase = int(raw.strip())
+            except ValueError:
+                console.print(f"[red]'{raw}' int değil — atlandı.[/red]")
+                continue
+            if new_phase < 1:
+                console.print("[red]phase >= 1 olmalı — atlandı.[/red]")
+                continue
+            f.phase = new_phase
+            f.priority = "must" if new_phase == 1 else "later"
+        save_scope(workspace, manifest)
+        console.print(f"\n[green]scope.json kaydedildi.[/green]")
+        # Re-render so user sees the final assignments.
+        table2 = Table(title="Updated scope")
+        table2.add_column("Phase", style="cyan", width=5)
+        table2.add_column("Description")
+        for f in manifest.features:
+            table2.add_row(str(f.phase), f.description)
+        console.print(table2)
+
+    # Optional advance to G1.
+    should_lock = lock_now
+    if not should_lock and not show:
+        should_lock = typer.confirm(
+            "\nScope'u kilitleyip G1 (PRD review)'a geç?", default=True
+        )
+
+    if should_lock:
+        from runtime.audit import AuditLogger
+
+        manifest.lock()
+        save_scope(workspace, manifest)
+        project.transition(
+            ProjectState.PRD_AWAITING_APPROVAL,
+            actor="scope-lock",
+            note=f"scope locked at {manifest.locked_at}",
+        )
+        project.save(WORKSPACE_ROOT)
+        AuditLogger().log(
+            "scope_locked",
+            project_id=project.id,
+            phase_1_count=len(manifest.phase_1_features()),
+            deferred_count=len(manifest.deferred_features()),
+            max_phase=manifest.max_phase(),
+        )
+        console.print(
+            f"\n[green]Scope kilitlendi.[/green] State: "
+            f"[cyan]{project.state.value}[/cyan]\n"
+            f"\n[yellow]HITL Gate G1:[/yellow] PRD'yi gözden geçir, onaylamak için:\n"
+            f"  [cyan]ortim advance {project.id} prd_approved --note 'reviewed'[/cyan]"
+        )
 
 
 skill_app = typer.Typer(help="M3 skills inspection.", no_args_is_help=True)
@@ -2416,11 +2775,21 @@ def execute(
     project_id: str,
     task_id: str = typer.Argument(..., help="Task ID (T-...)"),
     max_attempts: int = typer.Option(3, help="Reject sonrasi max retry"),
+    human_reviewed: bool = typer.Option(
+        False,
+        "--human-reviewed",
+        help="Faz 1.5 — sensitive_categories tagged task'lari icin insan onayini "
+        "bildirir. Bu olmadan auth/pii/payment kategorilerindeki task'lar "
+        "reviewer'i gectikten sonra AWAITING_HITL'e dusurulur.",
+    ),
 ) -> None:
     """Tek bir task'i Worker -> tests -> Reviewer pipeline'indan gecir.
 
     v0.5b: gercek kod + git branch (auto-on if `git` available) +
     AI_FACTORY_TEST_CMD set ise test runner.
+
+    Faz 1.5: sensitive task'lar (auth/pii/payment) icin --human-reviewed
+    flag'i ile insan onayini sinyalle.
     """
     from runtime.executor import TaskStatus, execute_task
 
@@ -2516,6 +2885,7 @@ def execute(
             tier=tier,
             skills=skills,
             dag=dag,
+            human_reviewed=human_reviewed,
         )
         status_file.save(workspace)
         _render_execution_result(result, task)
@@ -2549,6 +2919,11 @@ def run_all(
     max_workers: int = typer.Option(
         4, help="Paralel mode icin maksimum worker thread sayisi",
     ),
+    phase: int = typer.Option(
+        None,
+        "--phase",
+        help="Faz 1.1 — sadece phase <= N task'larini kostur. Omit=tum phaselar.",
+    ),
 ) -> None:
     """DAG'i topolojik batch'lerde calistir.
 
@@ -2556,6 +2931,8 @@ def run_all(
     - parallel: batch icindeki task'lar ThreadPoolExecutor + git worktree
       ile paralel; merge'ler seri, status save lock altinda. Gerektirir:
       git PATH'te ve `AI_FACTORY_GIT_ENABLED` 'false' degil.
+    - --phase N: scope.json'da phase>N olarak isaretli task'lar atlanir
+      (DAG'da kalir ama PENDING durur). Phase ayrimi ortim scope ile yapilir.
     """
     from runtime.concurrency import LockTimeout, file_lock
     from runtime.executor import GitNotAvailable, git_enabled
@@ -2592,6 +2969,34 @@ def run_all(
 
     batches = dag.topological_batches()
     tasks_by_id = {t.id: t for t in dag.tasks}
+
+    # Faz 1.1 — phase filter. Empty batches (all tasks filtered out) are
+    # dropped so the loop doesn't iterate placeholders. Tasks with
+    # phase > limit stay in tasks_by_id (deps may reference them) but
+    # never enter the batch loop, so they remain PENDING.
+    if phase is not None:
+        if phase < 1:
+            console.print("[red]--phase must be >= 1[/red]")
+            raise typer.Exit(1)
+        filtered: list[list[str]] = []
+        skipped = 0
+        for batch in batches:
+            keep = [tid for tid in batch if tasks_by_id[tid].phase <= phase]
+            skipped += len(batch) - len(keep)
+            if keep:
+                filtered.append(keep)
+        if skipped:
+            console.print(
+                f"[dim]--phase {phase}: skipping {skipped} task(s) with phase > {phase}[/dim]"
+            )
+        batches = filtered
+        audit.log(
+            "run_all_phase_filter",
+            project_id=project.id,
+            phase_limit=phase,
+            kept=sum(len(b) for b in filtered),
+            skipped=skipped,
+        )
 
     if project.state == ProjectState.TASKS_READY:
         gated, gated_ids = _maybe_open_schema_gate(project, dag, audit)
@@ -3023,6 +3428,10 @@ def demo(
     try:
         chain = [
             (["run", project.id], "Babel + Analyst (PRD draft)"),
+            (
+                ["scope", project.id, "--lock"],
+                "MVP scope auto-lock (Faz 1.1 — accepts default phase split)",
+            ),
             (
                 ["advance", project.id, "prd_approved", "--note", "demo auto-approve"],
                 "G1 — auto-approve PRD",

@@ -39,6 +39,7 @@ def _project_in_executing() -> Project:
     for step in [
         ProjectState.BABEL_PROCESSING,
         ProjectState.PRD_DRAFTING,
+        ProjectState.MVP_SCOPE_LOCKING,
         ProjectState.PRD_AWAITING_APPROVAL,
         ProjectState.PRD_APPROVED,
         ProjectState.RFC_DRAFTING,

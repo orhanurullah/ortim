@@ -24,6 +24,18 @@ class TaskSpec(BaseModel):
     estimated_tokens: int = 5000
     acceptance_criteria: list[str] = Field(default_factory=list)
     rfc_section: str = ""
+    # Faz 1.1 — MVP phase tag. 1 = MVP (the default for backward-compat),
+    # 2+ = deferred. `ortim run-all --phase N` filters at execution time;
+    # the Orchestrator emits this value by reading RFC §7's two-tier
+    # module table (Phase 1 / Phase 2+) when a ScopeManifest is locked.
+    phase: int = 1
+    # Faz 1.5 — sensitive categories detected by `runtime.security.
+    # sensitive_patterns.detect_sensitive_categories` (auth / pii / payment).
+    # The runner escalates such tasks to AWAITING_HITL after Worker output
+    # is reviewer-approved, forcing a human gate before merge. Bypass via
+    # `ortim execute <id> <task> --human-reviewed`. Empty list = no
+    # category trigger; runner skips the gate.
+    sensitive_categories: list[str] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
@@ -41,6 +53,13 @@ class TaskSpec(BaseModel):
             raise ValueError(
                 f"estimated_tokens={v} exceeds 20K cap — split the task"
             )
+        return v
+
+    @field_validator("phase")
+    @classmethod
+    def _phase_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"phase must be >= 1 (got {v})")
         return v
 
 

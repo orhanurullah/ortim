@@ -78,6 +78,7 @@ def _setup_done_project(tmp_path: Path) -> tuple[Project, Path]:
     chain = [
         ProjectState.BABEL_PROCESSING,
         ProjectState.PRD_DRAFTING,
+        ProjectState.MVP_SCOPE_LOCKING,
         ProjectState.PRD_AWAITING_APPROVAL,
         ProjectState.PRD_APPROVED,
         ProjectState.RFC_DRAFTING,

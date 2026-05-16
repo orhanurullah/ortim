@@ -64,6 +64,7 @@ def _project_in_state(tmp: Path, state: ProjectState) -> Project:
         ProjectState.TASKS_READY: [
             ProjectState.BABEL_PROCESSING,
             ProjectState.PRD_DRAFTING,
+            ProjectState.MVP_SCOPE_LOCKING,
             ProjectState.PRD_AWAITING_APPROVAL,
             ProjectState.PRD_APPROVED,
             ProjectState.RFC_DRAFTING,
@@ -75,6 +76,7 @@ def _project_in_state(tmp: Path, state: ProjectState) -> Project:
         ProjectState.EXECUTING: [
             ProjectState.BABEL_PROCESSING,
             ProjectState.PRD_DRAFTING,
+            ProjectState.MVP_SCOPE_LOCKING,
             ProjectState.PRD_AWAITING_APPROVAL,
             ProjectState.PRD_APPROVED,
             ProjectState.RFC_DRAFTING,

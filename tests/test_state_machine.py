@@ -43,6 +43,7 @@ def test_happy_path_transitions_are_valid() -> None:
         ProjectState.INTAKE,
         ProjectState.BABEL_PROCESSING,
         ProjectState.PRD_DRAFTING,
+        ProjectState.MVP_SCOPE_LOCKING,
         ProjectState.PRD_AWAITING_APPROVAL,
         ProjectState.PRD_APPROVED,
         ProjectState.RFC_DRAFTING,
@@ -63,6 +64,43 @@ def test_skipping_prd_approval_is_blocked() -> None:
     except InvalidTransition:
         return
     raise AssertionError("Expected InvalidTransition when skipping PRD approval")
+
+
+def test_skipping_scope_locking_is_blocked() -> None:
+    """Faz 1.1 — PRD_DRAFTING cannot jump directly to PRD_AWAITING_APPROVAL.
+    The user must pass through MVP_SCOPE_LOCKING first so each feature
+    has an explicit phase assignment."""
+    try:
+        validate_transition(
+            ProjectState.PRD_DRAFTING, ProjectState.PRD_AWAITING_APPROVAL
+        )
+    except InvalidTransition:
+        return
+    raise AssertionError(
+        "Expected InvalidTransition when skipping MVP_SCOPE_LOCKING"
+    )
+
+
+def test_mvp_scope_locking_advance_and_backstep() -> None:
+    """MVP_SCOPE_LOCKING advances to PRD_AWAITING_APPROVAL (G1) and can
+    step back to either PRD_DIALOG (M2 path) or PRD_DRAFTING (legacy)."""
+    validate_transition(
+        ProjectState.MVP_SCOPE_LOCKING, ProjectState.PRD_AWAITING_APPROVAL
+    )
+    validate_transition(
+        ProjectState.MVP_SCOPE_LOCKING, ProjectState.PRD_DIALOG
+    )
+    validate_transition(
+        ProjectState.MVP_SCOPE_LOCKING, ProjectState.PRD_DRAFTING
+    )
+
+
+def test_prd_awaiting_approval_can_rescope() -> None:
+    """G1 reviewer that wants to rescope before signing returns to
+    MVP_SCOPE_LOCKING rather than fully redrafting the PRD."""
+    validate_transition(
+        ProjectState.PRD_AWAITING_APPROVAL, ProjectState.MVP_SCOPE_LOCKING
+    )
 
 
 def test_skipping_rfc_approval_is_blocked() -> None:
@@ -107,6 +145,7 @@ def test_m2_dialog_happy_path_is_valid() -> None:
         ProjectState.INTAKE_DIALOG,
         ProjectState.STACK_DIALOG,
         ProjectState.PRD_DIALOG,
+        ProjectState.MVP_SCOPE_LOCKING,
         ProjectState.PRD_AWAITING_APPROVAL,
     ]
     for current, target in zip(chain[:-1], chain[1:], strict=True):

@@ -24,6 +24,11 @@ class ProjectState(str, Enum):
     STACK_DIALOG = "stack_dialog"
     PRD_DIALOG = "prd_dialog"
     PRD_DRAFTING = "prd_drafting"
+    # Faz 1.1 — MVP scope locking. Sits between PRD draft and G1 so the
+    # user assigns phase + priority to each feature before signing the
+    # PRD. The Architect (Call 2 / RFC) and Orchestrator (DAG) consume
+    # `scope.json` to emit Phase 1 modules separately from Phase 2+.
+    MVP_SCOPE_LOCKING = "mvp_scope_locking"
     PRD_AWAITING_APPROVAL = "prd_awaiting_approval"
     PRD_APPROVED = "prd_approved"
     RFC_DRAFTING = "rfc_drafting"
@@ -75,15 +80,26 @@ TRANSITIONS: dict[ProjectState, set[ProjectState]] = {
         ProjectState.FAILED,
     },
     ProjectState.PRD_DIALOG: {
-        ProjectState.PRD_AWAITING_APPROVAL,  # lock PRD → human review gate
+        ProjectState.MVP_SCOPE_LOCKING,      # PRD draft ready → assign phase to features
         ProjectState.STACK_DIALOG,           # back-step: rework stack
         ProjectState.PAUSED,
         ProjectState.FAILED,
     },
-    ProjectState.PRD_DRAFTING: {ProjectState.PRD_AWAITING_APPROVAL, ProjectState.FAILED},
+    ProjectState.PRD_DRAFTING: {
+        ProjectState.MVP_SCOPE_LOCKING,      # legacy / dialog-mode-off path
+        ProjectState.FAILED,
+    },
+    ProjectState.MVP_SCOPE_LOCKING: {
+        ProjectState.PRD_AWAITING_APPROVAL,  # scope locked → G1
+        ProjectState.PRD_DIALOG,             # back-step: rework PRD
+        ProjectState.PRD_DRAFTING,           # back-step (dialog-mode-off path)
+        ProjectState.PAUSED,
+        ProjectState.FAILED,
+    },
     ProjectState.PRD_AWAITING_APPROVAL: {
         ProjectState.PRD_APPROVED,
         ProjectState.PRD_DRAFTING,
+        ProjectState.MVP_SCOPE_LOCKING,      # reviewer wants to rescope before approving
         ProjectState.PAUSED,
         ProjectState.FAILED,
     },
@@ -131,6 +147,7 @@ TRANSITIONS: dict[ProjectState, set[ProjectState]] = {
         ProjectState.STACK_DIALOG,
         ProjectState.PRD_DIALOG,
         ProjectState.PRD_DRAFTING,
+        ProjectState.MVP_SCOPE_LOCKING,
         ProjectState.RFC_DRAFTING,
         ProjectState.TASKS_READY,
         ProjectState.EXECUTING,

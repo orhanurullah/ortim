@@ -1,6 +1,22 @@
 # L1 Immutable Principles
 
-These rules are non-negotiable and are loaded into every agent prompt. Violation is grounds for review rejection.
+These rules are non-negotiable and are loaded into **every** Worker /
+Reviewer / Architect prompt by `runtime/memory/loader.py` via
+`MemoryLoader.load_l1_principles()`. Violation is grounds for review
+rejection — Reviewer agents are instructed to surface any L1 breach as a
+criterion `fail` with an explicit citation, regardless of acceptance
+criteria coverage.
+
+Position in the 3-tier knowledge model (see [`../README.md`](../README.md)):
+
+  * **L1** = this file. Universal, every prompt, conflict-priority highest.
+  * **L2** = `docs/golden-paths/`, `docs/templates/`, `docs/glossary/`. Retrieved per tier / per call.
+  * **L3** = `docs/adr/`. Episodic; future RAG retrieval.
+
+Editing rule: every change here ships under a deliberate PR with a
+test that pins the new rule (or a note in the PR description if the
+rule is structural / hard to test). The cap is ~500 lines; if the list
+grows past that, propose splitting before adding the next entry.
 
 ## Code Structure
 1. **Dependency Injection always.** Pass dependencies as constructor parameters or function arguments. Never instantiate concrete dependencies inside business logic.

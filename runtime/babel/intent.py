@@ -29,6 +29,14 @@ class StructuredIntent(BaseModel):
     inferred_compliance: list[str] = Field(default_factory=list)
     inferred_scale: str = "unknown"
     open_questions: list[str] = Field(default_factory=list)
+    # Faz 1.2 B-2 fix — explicit tool/framework/language names the user
+    # mentioned in the brief. Architect MUST honor these over tier
+    # defaults; the dialog-off path bug (proof-point bf761fff02b0) was
+    # that the user wrote "Python + FastAPI + SQLite" but the BaaS tier
+    # default silently substituted Supabase+PostgreSQL. Keeping this on
+    # StructuredIntent (not a new artifact) keeps Babel as the single
+    # NLP-extraction layer. Empty list = user named nothing specific.
+    user_stack_hints: list[str] = Field(default_factory=list)
 
 
 def _strip_code_fences(text: str) -> str:
@@ -40,6 +48,54 @@ def _strip_code_fences(text: str) -> str:
         if text.endswith("```"):
             text = text[: -3]
     return text.strip()
+
+
+# Faz 1.2 B-5 fix — deterministic app_class inference from user-named
+# stack hints. Architect Call 1 LLM defaults to "web" when the PRD has
+# no mobile/desktop signal, even when the brief explicitly mentioned
+# Flutter / Tauri / React Native (proof-point 45ed19809dec: Flutter habit
+# tracker → tier T2 BaaS instead of M1). This pure function is consumed
+# by `runtime.main.run` to override gp_inputs.app_class post-extraction.
+_MOBILE_HINTS = (
+    "flutter",
+    "react native",
+    "react-native",
+    "ionic",
+    "capacitor",
+    "swiftui",
+    "jetpack compose",
+    "xamarin",
+)
+_DESKTOP_HINTS = (
+    "tauri",
+    "electron",
+    "wails",
+    "qt",
+    "gtk",
+    "wpf",
+    "winforms",
+)
+
+
+def app_class_from_hints(hints: list[str]) -> str | None:
+    """Return `"mobile"`, `"desktop"`, or `None` from explicit stack names.
+
+    None means "no signal" — caller must keep the LLM's choice. Mobile
+    and desktop signals win deterministically because the user named a
+    framework that only makes sense for that app_class. Web is never
+    returned (the absence of a mobile/desktop signal is not evidence of
+    a web choice — could be a CLI / API / static site).
+    """
+    if not hints:
+        return None
+    blob = " ".join(s.lower() for s in hints)
+    for kw in _MOBILE_HINTS:
+        if kw in blob:
+            return "mobile"
+    for kw in _DESKTOP_HINTS:
+        if kw in blob:
+            return "desktop"
+    return None
 
 
 class BabelLayer:

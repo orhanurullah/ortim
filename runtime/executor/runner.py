@@ -124,6 +124,7 @@ def execute_task(
     skills: list[Skill] | None = None,
     tier: str | None = None,
     dag: TaskDAG | None = None,
+    human_reviewed: bool = False,
 ) -> ExecutionResult:
     """Run one task end-to-end. Mutates `status_file` in memory; the caller saves it.
 
@@ -414,6 +415,42 @@ def execute_task(
                 branch=branch,
                 written_paths=written,
                 error="pre_commit hook failed",
+                verdicts=all_verdicts,
+            )
+
+        # Faz 1.5 — sensitive-category gate. Even when all reviewers
+        # approved, tasks tagged as auth/pii/payment require a human
+        # before the code is merged. Bypass with `--human-reviewed` once
+        # a person has signed off. The gate runs BEFORE commit so an
+        # un-approved sensitive task never lands on main.
+        if task.sensitive_categories and not human_reviewed:
+            record.status = TaskStatus.AWAITING_HITL
+            cats = ", ".join(task.sensitive_categories)
+            gate_msg = (
+                f"sensitive_category_review_required ({cats}); "
+                "Worker output reviewer-approved but a human must sign "
+                "off before merge. Re-run with --human-reviewed once "
+                "you have."
+            )
+            record.last_review_reasons.append(f"[sensitive_category] {gate_msg}")
+            audit.log(
+                "executor_sensitive_category_gate",
+                project_id=project_id,
+                task_id=task.id,
+                categories=list(task.sensitive_categories),
+            )
+            if use_git and branch:
+                _try_cleanup_branch(workspace, task.id, use_worktree)
+            return ExecutionResult(
+                task.id,
+                TaskStatus.AWAITING_HITL,
+                worker_output=output,
+                verdict=verdict,
+                test_result=test_result,
+                branch=branch,
+                written_paths=written,
+                task_workspace=task_workspace if use_worktree else None,
+                error=gate_msg,
                 verdicts=all_verdicts,
             )
 

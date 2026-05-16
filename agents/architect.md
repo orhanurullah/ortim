@@ -136,6 +136,19 @@ Given the PRD, the **already-selected** tier with its scoring rationale, and the
 ### Output
 A single markdown RFC document matching `docs/templates/RFC.template.md` structure exactly, including §11–§17.
 
+### Scope-Locked Module Breakdown (Faz 1.1)
+
+When the prompt includes a `## Locked Scope` block, §7 Module Breakdown MUST be a two-tier table:
+
+| Module | Phase 1 (MVP) | Phase 2+ (Deferred) |
+|---|---|---|
+
+Rules:
+- Each module appears once. Phase 1 cell lists work supporting Phase-1 features only. Phase 2+ cell lists work supporting deferred features. Use `—` when a tier is empty.
+- A module that exists ONLY for deferred features still appears (Phase 1 cell = `—`).
+- Never silently fold a Phase 2+ feature into a Phase 1 row. The Orchestrator reads this table to phase-tag each TaskSpec; absent phase signal defaults to `phase=1`, leaking deferred scope into MVP.
+- When no `Locked Scope` block is supplied, use the legacy single-tier table — pre-1.1 workspaces stay backward-compatible.
+
 ### Quality Bar
 - Module Breakdown rows: each module has clear responsibility, owns at most one schema, has a typed public interface.
 - Risks table: minimum 3 risks with concrete mitigations (not "monitor closely").

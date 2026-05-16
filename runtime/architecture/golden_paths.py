@@ -115,6 +115,15 @@ class GoldenPathInputs(BaseModel):
     """True iff the codebase already ships a React/Vue/Svelte web app — used
     by M2 (PWA wrapper) to determine whether wrapping is feasible."""
 
+    # Faz 1.2 B-1 fix — user-named tech that biases tier scoring. When the
+    # user explicitly names a self-hosted database (SQLite, Postgres) or
+    # framework (FastAPI, Express, Spring), T2 BaaS is structurally wrong
+    # — the user has signaled they will run their own infra. Without this,
+    # T2 wins for small/solo web apps even when the brief lists SQLite.
+    # Filled by `runtime.main.run` after Architect Call 1; empty list
+    # preserves pre-1.2 behavior for callers that don't supply hints.
+    user_stack_hints: list[str] = Field(default_factory=list)
+
 
 @dataclass
 class TierScore:
@@ -131,6 +140,78 @@ class TierScore:
     @property
     def name(self) -> str:
         return TIER_NAMES[self.tier]
+
+
+# Faz 1.2 B-1 fix — self-hosted signal classifiers. When the user names
+# any of these in `user_stack_hints`, they have explicitly opted out of
+# a BaaS-managed stack. T2 becomes a blocker (not just a deprioritization)
+# because Architect would otherwise generate a Supabase-shaped RFC on top
+# of a user-named SQLite, producing incoherent module breakdowns.
+_SELF_HOSTED_DB_HINTS = (
+    "sqlite",
+    "postgres",
+    "postgresql",
+    "mariadb",
+    "mysql",
+    "mongodb",
+    "redis",
+    "etcd",
+    "rocksdb",
+    "leveldb",
+    "h2",
+    "duckdb",
+)
+_SELF_HOSTED_FRAMEWORK_HINTS = (
+    "fastapi",
+    "flask",
+    "django",
+    "express",
+    "hono",
+    "koa",
+    "nestjs",
+    "gin",
+    "fiber",
+    "echo",
+    "spring",  # also matches "spring boot"
+    "rails",
+    "phoenix",
+    "actix",
+    "axum",
+    "rocket",
+    "warp",
+)
+# BaaS providers — when the user names ONE of these, T2 stays a strong fit.
+_BAAS_PROVIDER_HINTS = (
+    "supabase",
+    "firebase",
+    "appwrite",
+    "pocketbase",
+    "amplify",
+    "nhost",
+)
+
+
+def _self_hosted_signal(hints: list[str]) -> str | None:
+    """Return the first self-hosted DB/framework name found in hints, or
+    None when no self-hosted signal is present. The string is surfaced in
+    T2's blocker reason so the user can see why BaaS was disqualified.
+
+    BaaS-provider hints (Supabase, Firebase, etc.) suppress the self-hosted
+    verdict — a user who names BOTH "Supabase" AND "Postgres" is on BaaS
+    (Supabase IS managed Postgres)."""
+    if not hints:
+        return None
+    blob = " ".join(s.lower() for s in hints)
+    for kw in _BAAS_PROVIDER_HINTS:
+        if kw in blob:
+            return None
+    for kw in _SELF_HOSTED_DB_HINTS:
+        if kw in blob:
+            return kw
+    for kw in _SELF_HOSTED_FRAMEWORK_HINTS:
+        if kw in blob:
+            return kw
+    return None
 
 
 def _score_t0(inputs: GoldenPathInputs) -> TierScore:
@@ -167,6 +248,14 @@ def _score_t2(inputs: GoldenPathInputs) -> TierScore:
         )
     if inputs.expected_scale == Scale.LARGE:
         s.blockers.append("BaaS cost grows non-linearly at large scale")
+    # Faz 1.2 B-1 — user explicitly named self-hosted infra; BaaS is
+    # structurally wrong. Without this, "small solo web app with auth"
+    # signals push T2 to score=100 even when the brief says SQLite.
+    self_hosted = _self_hosted_signal(inputs.user_stack_hints)
+    if self_hosted:
+        s.blockers.append(
+            f"user named self-hosted tech ('{self_hosted}'); BaaS is incompatible"
+        )
     if not s.disqualified:
         # Score scales with how many positive BaaS signals fired.
         # No signals → low score → T4 wins. Full signals → strong T2 win.
@@ -220,6 +309,16 @@ def _score_t4(inputs: GoldenPathInputs) -> TierScore:
     if inputs.team_size == TeamSize.LARGE:
         s.cons.append(
             "large team may benefit from module-team ownership separation (T5)"
+        )
+    # Faz 1.2 B-1 — user-named self-hosted stack pulls T4 above T3
+    # serverless. Without this, a SOLO/SMALL backend brief with SQLite
+    # would score T3=70 ≥ T4=80 (close call); the explicit user signal
+    # makes T4 the clear winner.
+    self_hosted = _self_hosted_signal(inputs.user_stack_hints)
+    if self_hosted:
+        s.score += 25
+        s.pros.append(
+            f"user named '{self_hosted}' — self-hosted monolith aligns with intent"
         )
     return s
 
