@@ -2,16 +2,25 @@
 # Copyright (c) 2026 ortim.dev
 """LLM provider registry.
 
-Each entry describes a provider that speaks the Anthropic Messages API:
-- Anthropic (native)
-- DeepSeek (via the Anthropic-compatible endpoint at api.deepseek.com/anthropic)
+Each entry describes one LLM endpoint the pipeline can route to:
+- Anthropic (native Messages API)
+- DeepSeek (Anthropic-compatible endpoint at api.deepseek.com/anthropic)
+- Ollama (local; OpenAI-compatible endpoint at localhost:11434/v1)
 
-The `anthropic` Python SDK is used for both — only `base_url` differs.
-This means agent code calls `LLMClient.call(system, user, ...)` once and the
-provider is decided at construction time via env vars or explicit args.
+`api_kind` selects which on-the-wire schema the client speaks:
+"anthropic" goes through the `anthropic` SDK; "openai" goes through a
+plain httpx POST to /v1/chat/completions. Agent code is unaware — it
+calls `LLMClient.call(system, user, ...)` and the wrapper picks the
+right path.
 
-Pricing is in USD per 1M tokens; verify against each provider's current
-pricing page before relying on budget reports for spend decisions.
+Local providers (Ollama, LM Studio) set `api_key_env=None`; the client
+skips the auth check for them. `OLLAMA_BASE_URL` lets an operator point
+the local provider at a remote Ollama host.
+
+Pricing is USD per 1M tokens. Local providers are priced 0.0 (real
+cost is electricity + hardware amortization, not per-token). Verify
+remote providers against their current pricing page before relying on
+budget reports for spend decisions.
 """
 
 from __future__ import annotations
@@ -23,11 +32,17 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
-    api_key_env: str
+    api_key_env: str | None
+    """Env var the client reads for the API key. `None` means the
+    provider is local / unauthenticated and no key is required."""
     base_url: str | None
     default_model: str
     input_usd_per_m: float
     output_usd_per_m: float
+    api_kind: str = "anthropic"
+    """On-the-wire API schema. `"anthropic"` uses the anthropic SDK;
+    `"openai"` uses a direct httpx POST to /chat/completions. Default
+    keeps existing providers behaviorally identical."""
 
 
 PROVIDERS: dict[str, ProviderConfig] = {
@@ -46,6 +61,15 @@ PROVIDERS: dict[str, ProviderConfig] = {
         default_model="deepseek-chat",
         input_usd_per_m=0.27,
         output_usd_per_m=1.10,
+    ),
+    "ollama": ProviderConfig(
+        name="ollama",
+        api_key_env=None,
+        base_url="http://localhost:11434/v1",
+        default_model="qwen2.5-coder:7b",
+        input_usd_per_m=0.0,
+        output_usd_per_m=0.0,
+        api_kind="openai",
     ),
 }
 

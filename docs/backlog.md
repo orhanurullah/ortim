@@ -109,6 +109,7 @@
 | **39c** | PRD ↔ skill consistency | Only if exclusive PRD↔skill conflict observed (never in 3 runs) | 6 |
 | **G-1** | M4 export visibility vs barrel-import discipline mismatch in extend mode | Same class observed in 2 more extend-cycle runs (T-009 on `proofpoint48` was first instance: Worker copied raw `../tagging/tagging` path instead of barrel import despite typescript-module-boundaries skill being in scope) | 4, 6 |
 | **G-2** | `test_infrastructure_unavailable` mode coarseness — `worker_test_quality_failure` sub-mode missing | Two more cases where Worker test misuse (e.g. `expect(...).rejects` Promise-wrap error) gets labelled as infrastructure failure rather than worker quality issue; observed once on T-009 `task/repository.test.ts` | — |
+| **2.2-pp** | Faz 2.2 live proof-point — Ollama install + Qwen-Coder run-all on T0 Python CLI brief | Operator installs Ollama locally and pulls `qwen2.5-coder:7b` (or larger). Infra was shipped 2026-05-16 (commit pending) with full unit-test coverage; ship gate is verifying the wire actually carries a real model response end-to-end. | 8 |
 
 ---
 
@@ -130,7 +131,7 @@
 
 - **OPEN actionable:** 8 (0× P1, 0× P2, 8× P3) — Item 48 shipped 2026-05-15 same day (Item 49 retracted post-forensic)
 - **SHIPPED:** 37+ (Items 43, BaaS-drift, UI-text-match, 47, 47b, 45, README-stale, M3.1.0, M3.1.1 added 2026-05-14)
-- **DEFERRED:** 3
+- **DEFERRED:** 4 (added 2026-05-16: 2.2-pp Faz 2.2 live proof-point — awaiting local Ollama install)
 - **CLOSED non-actionable:** 7
 - **Strategic open questions:** 5
 
