@@ -392,7 +392,7 @@ Issue açarken şunları ekle:
 - audit log son 30 satır (PII yokmuş gibi temizle)
 - Tekrar üretim için kullandığın brief
 
-GitHub: `https://github.com/<owner>/ai-factory/issues`
+GitHub: `https://github.com/<owner>/ortim/issues`
 
 ---
 

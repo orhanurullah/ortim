@@ -187,7 +187,7 @@ Worker + Reviewer (iter 5)
 ## Klasör Yapısı
 
 ```
-ai-factory/                    # repo dizini (rename edilmedi; canonical brand: Ortim)
+ortim/                          # repo dizini (canonical brand: Ortim)
 ├── Ortim_Architecture.md       Master spec
 ├── LICENSE                     FSL-1.1-Apache-2.0 (core)
 ├── LICENSE.commercial          Commercial (enterprise/)

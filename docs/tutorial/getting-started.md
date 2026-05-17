@@ -22,8 +22,8 @@ Bu rehber:
 ### 1.1 Repo'yu klonla
 
 ```bash
-git clone https://github.com/<owner>/ai-factory.git
-cd ai-factory
+git clone https://github.com/<owner>/ortim.git
+cd ortim
 python -m venv .venv
 .venv/Scripts/activate            # Windows
 # source .venv/bin/activate       # macOS/Linux
@@ -63,7 +63,7 @@ Yalnız DeepSeek key'i ile sistem tamamen işler. Anthropic key'i eklersen kriti
 
 ### 1.3 Workspace dizini
 
-Default: `ai-factory/workspaces/`. Her proje bu dizin altında kendi UUID kısa-id'siyle bir alt-klasör olur. `.gitignore`'da olduğu için commit'lenmez (kendi projen içinde de aynı pattern'i takip et).
+Default: `ortim/workspaces/`. Her proje bu dizin altında kendi UUID kısa-id'siyle bir alt-klasör olur. `.gitignore`'da olduğu için commit'lenmez (kendi projen içinde de aynı pattern'i takip et).
 
 İstersen `.env`'de `AI_FACTORY_WORKSPACE_ROOT=/path/to/dir` ile değiştir.
 
