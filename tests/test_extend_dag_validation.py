@@ -24,16 +24,16 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.agents.orchestrator import (  # noqa: E402
+from ortim.agents.orchestrator import (  # noqa: E402
     OrchestratorAgent,
     _find_below_min_ids,
     _find_id_collisions,
     _parse_rfc_extension_modules,
 )
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import TaskDAG, TaskSpec  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import TaskDAG, TaskSpec  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

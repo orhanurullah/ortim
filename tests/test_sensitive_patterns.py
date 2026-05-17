@@ -18,8 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.orchestrator import TaskSpec  # noqa: E402
-from runtime.security import (  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
+from ortim.security import (  # noqa: E402
     SENSITIVE_CATEGORIES,
     detect_sensitive_categories,
 )

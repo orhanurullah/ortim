@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from runtime.orchestrator.state_machine import (  # noqa: E402
+from ortim.orchestrator.state_machine import (  # noqa: E402
     HITL_GATES,
     TRANSITIONS,
     InvalidTransition,

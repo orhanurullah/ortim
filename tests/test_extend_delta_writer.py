@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from runtime.extend import (  # noqa: E402
+from ortim.extend import (  # noqa: E402
     DeltaSectionMalformed,
     append_delta_section,
     section_cycles_in,

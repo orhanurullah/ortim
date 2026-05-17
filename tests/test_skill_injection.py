@@ -20,13 +20,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.executor.reviewer import CodeReviewerAgent  # noqa: E402
-from runtime.executor.worker import WorkerAgent  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
-from runtime.skills.schema import Skill, SkillTriggers  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.executor.reviewer import CodeReviewerAgent  # noqa: E402
+from ortim.executor.worker import WorkerAgent  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
+from ortim.skills.schema import Skill, SkillTriggers  # noqa: E402
 
 
 @dataclass
@@ -166,7 +166,7 @@ def test_reviewer_injects_active_skills_with_reviewer_header() -> None:
         '"l1_violations": [], "suggestions": []}'
     )
     reviewer = CodeReviewerAgent(llm, memory, audit)
-    from runtime.executor.worker import WorkerOutput
+    from ortim.executor.worker import WorkerOutput
 
     worker_output = WorkerOutput(task_id="T-001", summary="ok", files=[])
     reviewer.review(

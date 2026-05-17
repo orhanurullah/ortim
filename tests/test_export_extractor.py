@@ -20,7 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.codebase.exports import extract_exports  # noqa: E402
+from ortim.codebase.exports import extract_exports  # noqa: E402
 
 
 def test_ts_named_function_captured() -> None:

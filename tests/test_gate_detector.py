@@ -16,9 +16,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.budget import BudgetTracker  # noqa: E402
-from runtime.executor.worker import FileChange, WorkerOutput  # noqa: E402
-from runtime.orchestrator import (  # noqa: E402
+from ortim.budget import BudgetTracker  # noqa: E402
+from ortim.executor.worker import FileChange, WorkerOutput  # noqa: E402
+from ortim.orchestrator import (  # noqa: E402
     TaskDAG,
     TaskSpec,
     detect_budget_breach,

@@ -25,11 +25,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from dataclasses import dataclass, field  # noqa: E402
 
-from runtime.architecture import GoldenPathInputs, Tier, select_tier  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.babel import StructuredIntent  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.architecture import GoldenPathInputs, Tier, select_tier  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.babel import StructuredIntent  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 
 # ---------- Schema layer ----------------------------------------------------
@@ -99,7 +99,7 @@ def _tier_score() -> object:
 
 
 def test_draft_rfc_injects_user_stack_hints_into_prompt() -> None:
-    from runtime.agents.architect import ArchitectAgent
+    from ortim.agents.architect import ArchitectAgent
 
     fake = CapturingFakeLLM()
     memory = MemoryLoader(REPO_ROOT)
@@ -129,7 +129,7 @@ def test_draft_rfc_injects_user_stack_hints_into_prompt() -> None:
 
 
 def test_draft_rfc_omits_hint_block_when_no_hints() -> None:
-    from runtime.agents.architect import ArchitectAgent
+    from ortim.agents.architect import ArchitectAgent
 
     fake = CapturingFakeLLM()
     memory = MemoryLoader(REPO_ROOT)

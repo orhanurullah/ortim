@@ -19,8 +19,8 @@ from unittest.mock import MagicMock, patch
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.llm.client import LLMClient  # noqa: E402
-from runtime.llm.providers import (  # noqa: E402
+from ortim.llm.client import LLMClient  # noqa: E402
+from ortim.llm.providers import (  # noqa: E402
     PROVIDERS,
     pricing_for,
     resolve_provider,
@@ -149,7 +149,7 @@ def test_ollama_call_posts_to_chat_completions_endpoint() -> None:
     """The OpenAI-kind path posts to `<base_url>/chat/completions`
     with the correct system + user message shape."""
     client = LLMClient(provider="ollama")
-    with patch("runtime.llm.client.httpx.post") as mock_post:
+    with patch("ortim.llm.client.httpx.post") as mock_post:
         mock_post.return_value = _fake_openai_response("hello back")
         result = client.call(system="be terse", user="hi", max_tokens=128)
 
@@ -183,7 +183,7 @@ def test_ollama_call_handles_missing_usage_block_gracefully() -> None:
         # no `usage` key
     }
     resp.raise_for_status = MagicMock(return_value=None)
-    with patch("runtime.llm.client.httpx.post", return_value=resp):
+    with patch("ortim.llm.client.httpx.post", return_value=resp):
         result = client.call(system="s", user="u")
     assert result.text == "ok"
     assert result.input_tokens == 0
@@ -198,7 +198,7 @@ def test_ollama_call_raises_helpful_error_on_unexpected_response_shape() -> None
     resp = MagicMock()
     resp.json.return_value = {"error": "model 'qwen' not found"}
     resp.raise_for_status = MagicMock(return_value=None)
-    with patch("runtime.llm.client.httpx.post", return_value=resp):
+    with patch("ortim.llm.client.httpx.post", return_value=resp):
         try:
             client.call(system="s", user="u")
         except RuntimeError as exc:
@@ -215,7 +215,7 @@ def test_ollama_call_passes_api_key_when_present_via_openai_base_url() -> None:
         provider="ollama",
         api_key="sk-local-test",
     )
-    with patch("runtime.llm.client.httpx.post") as mock_post:
+    with patch("ortim.llm.client.httpx.post") as mock_post:
         mock_post.return_value = _fake_openai_response("ok")
         client.call(system="s", user="u")
     headers = mock_post.call_args.kwargs["headers"]

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Tests for runtime.scope — Faz 1.1 ScopeManifest schema + helpers."""
+"""Tests for ortim.scope — Faz 1.1 ScopeManifest schema + helpers."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.scope import (  # noqa: E402
+from ortim.scope import (  # noqa: E402
     ScopeManifest,
     ScopedFeature,
     load_scope,
     save_scope,
     suggest_initial_scope,
 )
-from runtime.scope.schema import scope_path  # noqa: E402
+from ortim.scope.schema import scope_path  # noqa: E402
 
 
 def test_suggest_initial_scope_maps_must_to_phase_1_and_nice_to_phase_2() -> None:

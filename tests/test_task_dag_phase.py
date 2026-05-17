@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.orchestrator import TaskDAG, TaskSpec  # noqa: E402
+from ortim.orchestrator import TaskDAG, TaskSpec  # noqa: E402
 
 
 def test_task_spec_defaults_to_phase_1() -> None:

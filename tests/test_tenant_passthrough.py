@@ -27,9 +27,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.budget import BudgetTracker  # noqa: E402
-from runtime.orchestrator import Project  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.budget import BudgetTracker  # noqa: E402
+from ortim.orchestrator import Project  # noqa: E402
 
 
 def test_default_tenant_preserves_legacy_path() -> None:

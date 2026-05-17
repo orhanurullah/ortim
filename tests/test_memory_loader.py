@@ -10,7 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 
 def test_l1_principles_loads_and_is_nontrivial() -> None:

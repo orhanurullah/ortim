@@ -25,13 +25,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture import LockedStack  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.extend import BLOCKED_STACK_MARKER, section_cycles_in  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.main import _initiate_extend_prd, _list_extensions  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import Project, ProjectState  # noqa: E402
+from ortim.architecture import LockedStack  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.extend import BLOCKED_STACK_MARKER, section_cycles_in  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.main import _initiate_extend_prd, _list_extensions  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import Project, ProjectState  # noqa: E402
 
 
 @dataclass
@@ -151,7 +151,7 @@ def test_initiate_extend_prd_drives_state_and_writes_section(
 ) -> None:
     project, workspace = _setup_done_project(tmp_path)
     # Patch WORKSPACE_ROOT so the helper saves into our tmp tree.
-    import runtime.main as main_mod
+    import ortim.main as main_mod
 
     monkeypatch.setattr(main_mod, "WORKSPACE_ROOT", tmp_path / "workspaces")
 
@@ -209,7 +209,7 @@ def test_initiate_extend_prd_increments_cycle_on_second_call(
     """Second extend cycle on the same project must produce cycle=2 and
     coexist with cycle 1 in PRD.md."""
     project, workspace = _setup_done_project(tmp_path)
-    import runtime.main as main_mod
+    import ortim.main as main_mod
 
     monkeypatch.setattr(main_mod, "WORKSPACE_ROOT", tmp_path / "workspaces")
 
@@ -273,7 +273,7 @@ def test_initiate_extend_prd_blocked_stack_does_not_append_or_advance(
     - leave project state at EXTEND_PRD_DIALOG (NOT advance to G1)
     """
     project, workspace = _setup_done_project(tmp_path)
-    import runtime.main as main_mod
+    import ortim.main as main_mod
 
     monkeypatch.setattr(main_mod, "WORKSPACE_ROOT", tmp_path / "workspaces")
 
@@ -316,7 +316,7 @@ def test_initiate_extend_prd_blocked_stack_does_not_append_or_advance(
 
 
 def test_extract_extension_section_returns_full_block_until_next_h2() -> None:
-    from runtime.main import _extract_extension_section
+    from ortim.main import _extract_extension_section
 
     text = (
         "# RFC\n\n"
@@ -340,14 +340,14 @@ def test_extract_extension_section_returns_full_block_until_next_h2() -> None:
 
 
 def test_extract_extension_section_returns_none_when_cycle_missing() -> None:
-    from runtime.main import _extract_extension_section
+    from ortim.main import _extract_extension_section
 
     text = "# RFC\n\n## 1. Problem\n\n## Extension 1 — Foo\n"
     assert _extract_extension_section(text, cycle=2) is None
 
 
 def test_extension_feature_title_parses_em_dash_hyphen_colon() -> None:
-    from runtime.main import _extension_feature_title
+    from ortim.main import _extension_feature_title
 
     em = "## Extension 1 — Tagging\n### Goal\n..."
     hy = "## Extension 1 - Due dates\n### Goal\n..."

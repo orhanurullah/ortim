@@ -2,10 +2,10 @@
 # Copyright (c) 2026 ortim.dev
 """Smoke tests for the brownfield bootstrap helper.
 
-These tests target `runtime.orchestrator.bootstrap_brownfield` directly
+These tests target `ortim.orchestrator.bootstrap_brownfield` directly
 rather than spawning the CLI subprocess — Typer's runner brings up its own
 console + signal handlers and is too noisy for a 200ms unit. The CLI
-command in `runtime/main.py` is a thin wrapper around this helper, so
+command in `ortim/main.py` is a thin wrapper around this helper, so
 covering the helper covers the CLI's correctness.
 
 Cases:
@@ -25,7 +25,7 @@ from unittest.mock import patch
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.orchestrator import (  # noqa: E402
+from ortim.orchestrator import (  # noqa: E402
     Project,
     ProjectState,
     bootstrap_brownfield,

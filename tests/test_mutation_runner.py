@@ -15,14 +15,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.executor.reviewer import (  # noqa: E402
+from ortim.executor.reviewer import (  # noqa: E402
     CriterionVerdict,
     ReviewVerdict,
 )
-from runtime.executor.worker import WorkerOutput  # noqa: E402
-from runtime.mutation import DEFAULT_CASES, run_mutation_suite  # noqa: E402
-from runtime.mutation.case import MutationCase  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
+from ortim.executor.worker import WorkerOutput  # noqa: E402
+from ortim.mutation import DEFAULT_CASES, run_mutation_suite  # noqa: E402
+from ortim.mutation.case import MutationCase  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
 
 
 class _FakeReviewer:

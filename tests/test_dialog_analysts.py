@@ -22,14 +22,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.agents.intent_analyst import IntentAnalyst  # noqa: E402
-from runtime.agents.prd_analyst import PRDAnalyst  # noqa: E402
-from runtime.agents.stack_analyst import StackAnalyst  # noqa: E402
-from runtime.architecture import LockedStack, Tier, TierScore  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.babel import StructuredIntent  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.agents.intent_analyst import IntentAnalyst  # noqa: E402
+from ortim.agents.prd_analyst import PRDAnalyst  # noqa: E402
+from ortim.agents.stack_analyst import StackAnalyst  # noqa: E402
+from ortim.architecture import LockedStack, Tier, TierScore  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.babel import StructuredIntent  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 
 @dataclass

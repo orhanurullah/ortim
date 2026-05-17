@@ -19,12 +19,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.codebase.prior_tasks import (  # noqa: E402
+from ortim.codebase.prior_tasks import (  # noqa: E402
     collect_prior_outputs,
     format_prior_outputs_block,
 )
-from runtime.executor.status import TaskRunRecord, TaskStatus, TaskStatusFile  # noqa: E402
-from runtime.orchestrator import TaskDAG, TaskSpec  # noqa: E402
+from ortim.executor.status import TaskRunRecord, TaskStatus, TaskStatusFile  # noqa: E402
+from ortim.orchestrator import TaskDAG, TaskSpec  # noqa: E402
 
 
 def _task(tid: str, scope: str) -> TaskSpec:

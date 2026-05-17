@@ -20,8 +20,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture import LockedStack  # noqa: E402
-from runtime.dialog import (  # noqa: E402
+from ortim.architecture import LockedStack  # noqa: E402
+from ortim.dialog import (  # noqa: E402
     DIALOG_MODE_ENV,
     DIALOG_TURN_CAP_DEFAULT,
     DIALOG_TURN_CAP_ENV,
@@ -36,7 +36,7 @@ from runtime.dialog import (  # noqa: E402
     save_prd_md,
     turn_cap,
 )
-from runtime.orchestrator.state_machine import ProjectState  # noqa: E402
+from ortim.orchestrator.state_machine import ProjectState  # noqa: E402
 
 
 def _ws() -> Path:

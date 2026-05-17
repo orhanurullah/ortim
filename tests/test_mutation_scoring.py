@@ -10,8 +10,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.executor.reviewer import CriterionVerdict, ReviewVerdict  # noqa: E402
-from runtime.mutation import MutationCase, score_case  # noqa: E402
+from ortim.executor.reviewer import CriterionVerdict, ReviewVerdict  # noqa: E402
+from ortim.mutation import MutationCase, score_case  # noqa: E402
 
 
 def _case(bug_keywords: list[str]) -> MutationCase:

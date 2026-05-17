@@ -21,13 +21,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.codebase.exports import ExportSignature  # noqa: E402
-from runtime.codebase.prior_tasks import ModuleExports  # noqa: E402
-from runtime.executor.worker import WorkerAgent  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.codebase.exports import ExportSignature  # noqa: E402
+from ortim.codebase.prior_tasks import ModuleExports  # noqa: E402
+from ortim.executor.worker import WorkerAgent  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
 
 
 @dataclass

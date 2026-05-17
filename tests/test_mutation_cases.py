@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.mutation import DEFAULT_CASES  # noqa: E402
+from ortim.mutation import DEFAULT_CASES  # noqa: E402
 
 
 def test_default_cases_cover_six_bug_classes() -> None:

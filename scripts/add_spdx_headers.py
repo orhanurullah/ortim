@@ -66,7 +66,7 @@ def process_file(path: Path) -> bool:
 
 def main(roots: list[str]) -> int:
     if not roots:
-        roots = ["runtime", "tests", "scripts"]
+        roots = ["ortim", "tests", "scripts"]
     repo_root = Path(__file__).resolve().parent.parent
     total = 0
     modified = 0

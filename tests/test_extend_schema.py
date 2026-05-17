@@ -14,8 +14,8 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from runtime.extend import DagDelta, ExtensionIntent  # noqa: E402
-from runtime.orchestrator.task_dag import TaskDAG, TaskSpec  # noqa: E402
+from ortim.extend import DagDelta, ExtensionIntent  # noqa: E402
+from ortim.orchestrator.task_dag import TaskDAG, TaskSpec  # noqa: E402
 
 
 def _task(task_id: str, *, scope: str = "ui") -> TaskSpec:

@@ -19,13 +19,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture import LockedStack  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
-from runtime.skills.resolver import (  # noqa: E402
+from ortim.architecture import LockedStack  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
+from ortim.skills.resolver import (  # noqa: E402
     format_skills_block,
     resolve_for_task,
 )
-from runtime.skills.schema import Skill, SkillTriggers  # noqa: E402
+from ortim.skills.schema import Skill, SkillTriggers  # noqa: E402
 
 
 def _skill(
@@ -222,7 +222,7 @@ def test_react_di_skill_resolves_for_app_wiring_task() -> None:
     wiring tasks where Worker historically inlined `new ServiceName()`
     inside event handlers (proof-point v2 T-007). Triggers on react
     language + `App`/`wire`/`integrate`/`adapter`/`service`/`context`."""
-    from runtime.skills import load_all_skills
+    from ortim.skills import load_all_skills
 
     skills = load_all_skills(REPO_ROOT)
     names = {s.name for s in skills}
@@ -261,7 +261,7 @@ def test_react_di_skill_resolves_for_app_wiring_task() -> None:
 
 
 def test_sql_mock_skill_resolves_for_service_task_using_db_adapter() -> None:
-    from runtime.skills import load_all_skills
+    from ortim.skills import load_all_skills
 
     skills = load_all_skills(REPO_ROOT)
     names = {s.name for s in skills}
@@ -307,7 +307,7 @@ def test_ui_text_matching_skill_resolves_for_status_text_task() -> None:
     1000 tasks')`). Triggers on react + ui keywords like warning, banner,
     notification, empty state.
     """
-    from runtime.skills import load_all_skills
+    from ortim.skills import load_all_skills
 
     skills = load_all_skills(REPO_ROOT)
     names = {s.name for s in skills}

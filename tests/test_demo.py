@@ -28,8 +28,8 @@ sys.path.insert(0, str(REPO_ROOT))
 import pytest  # noqa: E402
 from typer.testing import CliRunner  # noqa: E402
 
-from runtime.main import _DEMO_DEFAULT_BRIEF, app  # noqa: E402
-from runtime.orchestrator import Project  # noqa: E402
+from ortim.main import _DEMO_DEFAULT_BRIEF, app  # noqa: E402
+from ortim.orchestrator import Project  # noqa: E402
 
 
 def _runner() -> CliRunner:
@@ -71,11 +71,11 @@ def test_demo_creates_project_workspace_before_running_subprocesses(
     so a subprocess failure doesn't leave the user with no workspace.
 
     `WORKSPACE_ROOT` is a module-level constant resolved at import time,
-    so we monkeypatch the binding in `runtime.main` directly rather than
+    so we monkeypatch the binding in `ortim.main` directly rather than
     relying on env var propagation."""
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -105,7 +105,7 @@ def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> N
     command in that shell session."""
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.setenv("AI_FACTORY_DIALOG_MODE", "on")

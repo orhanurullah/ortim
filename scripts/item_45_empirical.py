@@ -25,10 +25,10 @@ sys.path.insert(0, str(REPO_ROOT))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(REPO_ROOT / ".env")
 
-from runtime.agents.architect import ArchitectAgent  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.llm.router import client_for  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.agents.architect import ArchitectAgent  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.llm.router import client_for  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 N = 5
 PRD_PATH = REPO_ROOT / "workspaces" / "66244246c339" / "PRD.md"

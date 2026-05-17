@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Smoke tests for runtime/codebase/baseline.py.
+"""Smoke tests for ortim/codebase/baseline.py.
 
 Cover:
   25. detect_test_cmd → flutter test for a Flutter workspace
@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.codebase.baseline import (  # noqa: E402
+from ortim.codebase.baseline import (  # noqa: E402
     TestBaseline,
     check_regression,
     detect_test_cmd,

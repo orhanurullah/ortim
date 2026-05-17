@@ -32,7 +32,7 @@ CLI komutu: `ortim` (canonical) — `ai-factory` alias geriye uyumluluk için ko
 | Mobile (M0–M2 Flutter) + Desktop (D0–D1 Tauri) tier'ları | OK |
 | `ortim new --from-existing` / `inspect` / `rescan` / `baseline` komutları | OK |
 | **M1.5 — Workspace bootstrap (2026-05-08)** | |
-| `runtime/architecture/bootstrap.py` — per-tier root template + auto-retry loop | OK |
+| `ortim/architecture/bootstrap.py` — per-tier root template + auto-retry loop | OK |
 | Windows console UTF-8 reconfigure (cp1254 crash fix) | OK |
 | `_NPM_DEP_REGISTRY` (`react`/`vite`/`zod`/`idb`/`dexie`/`localforage`/...) + `_FRAMEWORK_PACKAGES` map | OK |
 | Test peer auto-pull (`@testing-library/react`, `fake-indexeddb`) | OK |
@@ -156,7 +156,7 @@ intake → babel_processing → prd_drafting → prd_awaiting_approval → prd_a
                                   ↘ failed / paused (her noktadan)
 ```
 
-- Her transition `runtime/orchestrator/state_machine.py:TRANSITIONS` içinde explicit. Atlamak imkansız (`InvalidTransition` raise).
+- Her transition `ortim/orchestrator/state_machine.py:TRANSITIONS` içinde explicit. Atlamak imkansız (`InvalidTransition` raise).
 - **G1 (PRD)** ve **G2 (RFC)** zorunlu insan onayı. CLI `prd_awaiting_approval` veya `rfc_awaiting_approval`'da durur, kullanıcı `advance ... prd_approved` çağırmadan ilerlemez.
 - G3–G7 (schema, external, security, deploy, budget) iter 5+ ile gelecek.
 
@@ -180,7 +180,7 @@ Worker + Reviewer (iter 5)
 ```
 
 Önemli boundary'ler:
-- **Tier seçimini LLM yapmaz.** Architect agent PRD'den input çıkarır; `runtime/architecture/golden_paths.py` kural-temelli skor hesaplar. T4 (Modular Monolith) hiç bloklanmayan default.
+- **Tier seçimini LLM yapmaz.** Architect agent PRD'den input çıkarır; `ortim/architecture/golden_paths.py` kural-temelli skor hesaplar. T4 (Modular Monolith) hiç bloklanmayan default.
 - **Analyst teknik karar veremez.** Sistem promptu yasaklar; PRD template'i tech-stack alanı içermez.
 - **Orchestrator'un DAG'ını runtime validate eder.** LLM cycle veya eksik dependency üretirse retry; 3 hata = `failed`.
 
@@ -202,7 +202,7 @@ ortim/                          # repo dizini (canonical brand: Ortim)
 │   ├── glossary/tr-en.md      Babel sözlüğü
 │   └── templates/             PRD / RFC / Task template'leri
 ├── agents/                    Ajan system promptları (babel, analyst, architect, orchestrator)
-├── runtime/
+├── ortim/
 │   ├── main.py                CLI entry (typer + rich)
 │   ├── orchestrator/
 │   │   ├── state_machine.py   States + TRANSITIONS + HITL_GATES
@@ -228,13 +228,13 @@ ortim/                          # repo dizini (canonical brand: Ortim)
 
 5a'da boundary'ler izole edildi (sandbox + soft-veto reviewer); 5b'de yetenekler genişletildi.
 
-- **`runtime/executor/sandbox.py`** — `normalize_relative` (abs/`..`/Win drive reject), `check_in_scope` (prefix match, sibling/lookalike reject), `check_extension` (kaynak kod + config + docs + bilinen basename whitelist; binaries reject), `resolve_in_workspace` (symlink escape reject)
-- **`runtime/executor/worker.py`** — `WorkerAgent` (LLM + sandbox-validated `WorkerOutput`); reject ettiğinde retry'da prior reviewer reasons'ı yeni prompt'a inject eder
-- **`runtime/executor/reviewer.py`** — `CodeReviewerAgent` (soft veto; test result görür, fail varsa hard reject)
-- **`runtime/executor/status.py`** — `task_status.json` sidecar (PENDING/IN_PROGRESS/DONE/FAILED/AWAITING_HITL + attempts + last verdict)
-- **`runtime/executor/git_ops.py`** — subprocess wrapper: `ensure_repo` (init + main + seed commit), `start_task_branch`, `commit_changes`, `merge_task_to_main`, `abandon_task_branch`. Env-driven via `AI_FACTORY_GIT_ENABLED=auto|true|false`.
-- **`runtime/executor/test_runner.py`** — `AI_FACTORY_TEST_CMD` set edilirse subprocess'le çalışır (timeout, exit code, stdout/stderr tail). Auto-detect yok — kullanıcı açık seçim yapar.
-- **`runtime/executor/runner.py`** — `execute_task()` çekirdek pipeline: Worker → write files → run tests → Reviewer → commit/abandon. CLI thin wrapper.
+- **`ortim/executor/sandbox.py`** — `normalize_relative` (abs/`..`/Win drive reject), `check_in_scope` (prefix match, sibling/lookalike reject), `check_extension` (kaynak kod + config + docs + bilinen basename whitelist; binaries reject), `resolve_in_workspace` (symlink escape reject)
+- **`ortim/executor/worker.py`** — `WorkerAgent` (LLM + sandbox-validated `WorkerOutput`); reject ettiğinde retry'da prior reviewer reasons'ı yeni prompt'a inject eder
+- **`ortim/executor/reviewer.py`** — `CodeReviewerAgent` (soft veto; test result görür, fail varsa hard reject)
+- **`ortim/executor/status.py`** — `task_status.json` sidecar (PENDING/IN_PROGRESS/DONE/FAILED/AWAITING_HITL + attempts + last verdict)
+- **`ortim/executor/git_ops.py`** — subprocess wrapper: `ensure_repo` (init + main + seed commit), `start_task_branch`, `commit_changes`, `merge_task_to_main`, `abandon_task_branch`. Env-driven via `AI_FACTORY_GIT_ENABLED=auto|true|false`.
+- **`ortim/executor/test_runner.py`** — `AI_FACTORY_TEST_CMD` set edilirse subprocess'le çalışır (timeout, exit code, stdout/stderr tail). Auto-detect yok — kullanıcı açık seçim yapar.
+- **`ortim/executor/runner.py`** — `execute_task()` çekirdek pipeline: Worker → write files → run tests → Reviewer → commit/abandon. CLI thin wrapper.
 - **CLI:** `execute <id> <task-id>` (tek task), `run-all <id>` (DAG'ı topolojik batch'lerde sıralı koştur)
 - **Smoke test:** 30/30 (`tests/test_executor.py`, LLM-free; git lifecycle dahil)
 - **Agent prompts:** `agents/worker.md`, `agents/reviewer.md` v0.5b kuralları (file whitelist, test contract)
@@ -243,11 +243,11 @@ ortim/                          # repo dizini (canonical brand: Ortim)
 
 5b'de tek-tek seri çalışan executor, 5c'de batch içindeki bağımsız task'lar için paralelleşti.
 
-- **`runtime/executor/git_ops.py`** — `add_worktree(workspace, task_id)` fresh `task/<id>` branch'i `<workspace>/.worktrees/<task_id>` altına bağlar; `remove_worktree` + `merge_task_to_main` worktree-aware (merge sonrası worktree silinir, sonra `branch -D`). `add_worktree` idempotent — eski worktree/branch kalıntılarını otomatik temizler.
-- **`runtime/executor/runner.py`** — `execute_task(..., use_worktree=True)` Worker write + test + reviewer'ı worktree dizininde koşturur; commit worktree'de yapılır, `ExecutionResult.needs_merge=True` döner. Caller (yalnız `run-all --parallel`) merge'i seri biçimde yapar. Sequential mod (`use_worktree=False`) eskisi gibi: worker direkt ana repo'da `task/<id>` checkout eder ve inline merge eder.
-- **`runtime/main.py:run-all`** — `--parallel` / `--sequential` (default: sequential), `--max-workers N` (default: 4). Paralel modda: `ThreadPoolExecutor` ile batch içi paralel exec; `merge_lock` ile merge serileştirilir; `status_lock` ile `task_status.json` save serileştirilir; merge conflict → task `AWAITING_HITL`. Workspace bazlı `file_lock(workspace/.exec)` aynı projede iki `run-all`'ı engeller.
-- **`runtime/concurrency/lock.py`** — `mkdir`-atomic file_lock şimdi aktif kullanımda (`run-all` exec lock + paralel test'ler), stale-lock recovery (>2x timeout) korunuyor.
-- **`runtime/audit/logger.py`** — `threading.Lock` ile per-instance write serializasyonu eklendi; paralel Worker'lar JSONL satırlarını bozmaz.
+- **`ortim/executor/git_ops.py`** — `add_worktree(workspace, task_id)` fresh `task/<id>` branch'i `<workspace>/.worktrees/<task_id>` altına bağlar; `remove_worktree` + `merge_task_to_main` worktree-aware (merge sonrası worktree silinir, sonra `branch -D`). `add_worktree` idempotent — eski worktree/branch kalıntılarını otomatik temizler.
+- **`ortim/executor/runner.py`** — `execute_task(..., use_worktree=True)` Worker write + test + reviewer'ı worktree dizininde koşturur; commit worktree'de yapılır, `ExecutionResult.needs_merge=True` döner. Caller (yalnız `run-all --parallel`) merge'i seri biçimde yapar. Sequential mod (`use_worktree=False`) eskisi gibi: worker direkt ana repo'da `task/<id>` checkout eder ve inline merge eder.
+- **`ortim/main.py:run-all`** — `--parallel` / `--sequential` (default: sequential), `--max-workers N` (default: 4). Paralel modda: `ThreadPoolExecutor` ile batch içi paralel exec; `merge_lock` ile merge serileştirilir; `status_lock` ile `task_status.json` save serileştirilir; merge conflict → task `AWAITING_HITL`. Workspace bazlı `file_lock(workspace/.exec)` aynı projede iki `run-all`'ı engeller.
+- **`ortim/concurrency/lock.py`** — `mkdir`-atomic file_lock şimdi aktif kullanımda (`run-all` exec lock + paralel test'ler), stale-lock recovery (>2x timeout) korunuyor.
+- **`ortim/audit/logger.py`** — `threading.Lock` ile per-instance write serializasyonu eklendi; paralel Worker'lar JSONL satırlarını bozmaz.
 - **Batch-level metrikler** — her batch sonunda `executor_batch_metrics` audit event: `wall_seconds`, `sum_task_seconds`, `speedup`, `merge_wait_seconds`, `task_count`, `mode`, `max_workers`. Konsolda paralel batch için "batch süresi Xs, hızlanma xN" satırı.
 - **Smoke test:** 88/88 (`tests/test_executor.py` 33, `test_concurrency_lock.py` 5, `test_audit_logger.py` 2 — concurrent JSONL integrity dahil; diğer suite'ler değişmedi)
 
@@ -255,11 +255,11 @@ ortim/                          # repo dizini (canonical brand: Ortim)
 
 LLM çağrıları artık provider-agnostic. DeepSeek'in Anthropic-uyumlu endpoint'i (`https://api.deepseek.com/anthropic`) `anthropic` SDK ile çalışır — sadece `base_url` farklı.
 
-- **`runtime/llm/providers.py`** (yeni) — `ProviderConfig` registry: `anthropic`, `deepseek`. `pricing_for(provider, model)`, `resolve_provider(name)`.
-- **`runtime/llm/client.py`** — provider seçimi `resolve_provider`'dan; `Anthropic(api_key, base_url)`. `LLMResponse.provider` field'ı + `audit_fields()` helper'ı (`tokens` + `provider` + `model` döner).
-- **`runtime/llm/router.py`** (yeni) — `client_for(role)`: `<ROLE>_PROVIDER`/`<ROLE>_MODEL` env override → `LLM_PROVIDER`/`DEFAULT_MODEL` → provider default.
+- **`ortim/llm/providers.py`** (yeni) — `ProviderConfig` registry: `anthropic`, `deepseek`. `pricing_for(provider, model)`, `resolve_provider(name)`.
+- **`ortim/llm/client.py`** — provider seçimi `resolve_provider`'dan; `Anthropic(api_key, base_url)`. `LLMResponse.provider` field'ı + `audit_fields()` helper'ı (`tokens` + `provider` + `model` döner).
+- **`ortim/llm/router.py`** (yeni) — `client_for(role)`: `<ROLE>_PROVIDER`/`<ROLE>_MODEL` env override → `LLM_PROVIDER`/`DEFAULT_MODEL` → provider default.
 - **Agent başına LLM** — `main.py`'da Babel/Analyst/Architect/Orchestrator/Worker/Reviewer her biri kendi `client_for(role)` çağrısıyla başlar; pahalı kararlar Claude'da, ucuz işler DeepSeek'te tutulabilir.
-- **`runtime/budget/tracker.py`** — per-provider pricing. `BudgetReport.per_provider: dict[str, ProviderBreakdown]`. CLI: `ortim budget --by-provider`.
+- **`ortim/budget/tracker.py`** — per-provider pricing. `BudgetReport.per_provider: dict[str, ProviderBreakdown]`. CLI: `ortim budget --by-provider`.
 - **Audit log** — her LLM çağrısı satırı `provider` + `model` taşır; eski satırlar geriye uyumlu (default: anthropic).
 - **Smoke test:** 19 yeni test (`test_llm_providers.py` 9, `test_llm_router.py` 6, `test_budget_multi_provider.py` 4); regression yok, tüm suite 107/107.
 
@@ -267,10 +267,10 @@ LLM çağrıları artık provider-agnostic. DeepSeek'in Anthropic-uyumlu endpoin
 
 CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 
-- **`agents/security_reviewer.md` + `runtime/executor/security_reviewer.py`** — `SecurityReviewerAgent` (hard veto). Threat catalogue: injection (SQL/shell/eval), hard-coded secrets, authn/authz bypass, insecure crypto (MD5/ECB), path traversal, SSRF, CSRF, sensitive data in logs, known-CVE deps. Severity high/medium → reject; low → suggestion.
-- **`agents/test_reviewer.md` + `runtime/executor/test_reviewer.py`** — `TestReviewerAgent` (hard veto). AC × test eşleştirme zorunlu (`ac_coverage: [{ac, test}]` döner); test runner failure → otomatik reject; happy-path-only → reject.
-- **`agents/perf_reviewer.md` + `runtime/executor/perf_reviewer.py`** — `PerfReviewerAgent` (soft veto). N+1, missing index, unbounded loop, sync I/O, bundle bloat, missing pagination. Bulgular `last_review_suggestions`'e `[perf] ...` etiketiyle düşer; merge'i blok etmez.
-- **`runtime/executor/runner.py:ReviewerChain`** — opsiyonel `(security, test, perf)`; her biri bağımsız None olabilir. Pipeline: CodeReviewer + tests OK → Security → (OK ise) Test → (her durumda) Perf. Hard veto yakaladığında: **retry budget'ı atlanır, task doğrudan `AWAITING_HITL`** (security/test gap'i aynı Worker'ı yeniden çağırarak çözülmez).
+- **`agents/security_reviewer.md` + `ortim/executor/security_reviewer.py`** — `SecurityReviewerAgent` (hard veto). Threat catalogue: injection (SQL/shell/eval), hard-coded secrets, authn/authz bypass, insecure crypto (MD5/ECB), path traversal, SSRF, CSRF, sensitive data in logs, known-CVE deps. Severity high/medium → reject; low → suggestion.
+- **`agents/test_reviewer.md` + `ortim/executor/test_reviewer.py`** — `TestReviewerAgent` (hard veto). AC × test eşleştirme zorunlu (`ac_coverage: [{ac, test}]` döner); test runner failure → otomatik reject; happy-path-only → reject.
+- **`agents/perf_reviewer.md` + `ortim/executor/perf_reviewer.py`** — `PerfReviewerAgent` (soft veto). N+1, missing index, unbounded loop, sync I/O, bundle bloat, missing pagination. Bulgular `last_review_suggestions`'e `[perf] ...` etiketiyle düşer; merge'i blok etmez.
+- **`ortim/executor/runner.py:ReviewerChain`** — opsiyonel `(security, test, perf)`; her biri bağımsız None olabilir. Pipeline: CodeReviewer + tests OK → Security → (OK ise) Test → (her durumda) Perf. Hard veto yakaladığında: **retry budget'ı atlanır, task doğrudan `AWAITING_HITL`** (security/test gap'i aynı Worker'ı yeniden çağırarak çözülmez).
 - **`ExecutionResult.verdicts`** ve **`blocked_by`** — her reviewer'ın çıktısı saklanır; hard veto veren reviewer'ın adı `blocked_by`'da.
 - **`AI_FACTORY_HARD_REVIEWERS=on`** env flag'i; default `off` (geriye uyumlu — pre-6b davranış). API key eksik bir reviewer için degrade-warn (chain'in geri kalanı çalışmaya devam).
 - **CLI:** `ortim execute` ve `run-all` çıktısında `BLOCKED` etiketi + `[security]/[test]/[perf]` etiketli reasons.
@@ -278,14 +278,14 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 
 ### İter 6c (TAMAMLANDI) — HITL G3–G7 + hooks
 
-- **Project-level gate state'leri:** `SCHEMA_AWAITING_APPROVAL` (G3), `BUDGET_AWAITING_APPROVAL` (G7), `DEPLOY_AWAITING_APPROVAL` (G6) — `runtime/orchestrator/state_machine.py` `TRANSITIONS` ve `HITL_GATES` güncellemeleri.
+- **Project-level gate state'leri:** `SCHEMA_AWAITING_APPROVAL` (G3), `BUDGET_AWAITING_APPROVAL` (G7), `DEPLOY_AWAITING_APPROVAL` (G6) — `ortim/orchestrator/state_machine.py` `TRANSITIONS` ve `HITL_GATES` güncellemeleri.
 - **Task-level gate'ler:** G4 (external integration) ve G5 (security severity high/medium) doğrudan task → `AWAITING_HITL` ile yönetilir; faz 6b'deki SecurityReviewer hard veto bunu yapıyordu.
-- **`runtime/orchestrator/gate_detector.py`** (yeni) — saf fonksiyonlar:
+- **`ortim/orchestrator/gate_detector.py`** (yeni) — saf fonksiyonlar:
   - `detect_schema_tasks(dag)` → `SchemaGateEvidence` (DDL/migration regex + path hint'leri).
   - `detect_external_calls(worker_output)` → `ExternalGateEvidence` (boto3/httpx/requests/stripe/twilio import + non-local URL).
   - `detect_security_severity(verdict)` → `SecurityGateEvidence` (duck-typed verdict kabul eder, circular import'tan kaçınır).
   - `detect_budget_breach(tracker, project_id, cap_usd)` → `BudgetGateEvidence` (overage % dahil).
-- **`runtime/hooks/registry.py`** (yeni) — `run_hook("pre_commit"|"pre_deploy", cwd, audit, ...)`. Komut env'leri: `AI_FACTORY_LINT_CMD`, `AI_FACTORY_FORMAT_CHECK_CMD`, `AI_FACTORY_DEPLOY_CMD`. Chain'de ilk fail short-circuit; her hook event'i audit'a `hook_event` olarak düşer (`exit_code`, `duration_seconds`, `stderr_tail`). `AI_FACTORY_HOOKS_ENABLED=false` ile global disable.
+- **`ortim/hooks/registry.py`** (yeni) — `run_hook("pre_commit"|"pre_deploy", cwd, audit, ...)`. Komut env'leri: `AI_FACTORY_LINT_CMD`, `AI_FACTORY_FORMAT_CHECK_CMD`, `AI_FACTORY_DEPLOY_CMD`. Chain'de ilk fail short-circuit; her hook event'i audit'a `hook_event` olarak düşer (`exit_code`, `duration_seconds`, `stderr_tail`). `AI_FACTORY_HOOKS_ENABLED=false` ile global disable.
 - **Pre-commit entegrasyonu** — `runner.py:execute_task` Reviewer chain onayladıktan SONRA `commit_changes` ÖNCESİ `pre_commit` hook'u çağırır. Hook fail ise: branch abandon, last_review_reasons'a `[pre_commit] hook failed (exit X); stderr tail: ...` push, task PENDING (retry budget tüketir → AWAITING_HITL).
 - **CLI:** `ortim gates <project-id>` — açık project gate'leri + advisory schema/budget gate raporu.
 - **Smoke test:** 20 yeni test (`test_gate_detector.py` 13, `test_hooks.py` 7); regression yok, suite 134/134.
@@ -300,12 +300,12 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 - **`docs/golden-paths/index.md`** — 6 yeni doc'a referans güncellemesi (eski "stubs in iter 4+" satırı kaldırıldı).
 
 ### M1 — Brownfield (2026-05-08, TAMAMLANDI)
-- `runtime/codebase/{reader,frameworks,baseline,schema}.py` — gitignore-aware walk, AST/regex export extraction, framework detection
+- `ortim/codebase/{reader,frameworks,baseline,schema}.py` — gitignore-aware walk, AST/regex export extraction, framework detection
 - Mobile (M0–M2 Flutter) + Desktop (D0–D1 Tauri) tier'ları
 - `ortim new --from-existing` + `inspect` / `rescan` / `baseline` CLI
 
 ### M1.5 — Bootstrap layer (2026-05-08, TAMAMLANDI)
-- `runtime/architecture/bootstrap.py` — per-tier root template (T2/web: `package.json` + `tsconfig.json` + `vite.config.ts` + `setupTests.ts` + `.gitignore`); idempotent, mevcut dosyalara dokunmaz
+- `ortim/architecture/bootstrap.py` — per-tier root template (T2/web: `package.json` + `tsconfig.json` + `vite.config.ts` + `setupTests.ts` + `.gitignore`); idempotent, mevcut dosyalara dokunmaz
 - Auto-retry loop (sequential branch); `prior_reasons` sandbox feedback enjeksiyonu
 - Windows UTF-8 console reconfigure (cp1254 crash fix)
 
@@ -329,7 +329,7 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 - Cross-task interface mismatch (önceden T-009 sınıfı failure) sınıfını yapısal olarak kapatır
 
 ### M3.1 — `ortim extend` iteratif geliştirme (2026-05-15, TAMAMLANDI)
-- **M3.1.0 foundation** — state machine: 7 yeni state (DONE → EXTEND_DIALOG → EXTEND_PRD_DIALOG/APPROVAL/APPROVED → EXTEND_RFC_DRAFTING/APPROVAL/APPROVED → TASKS_GENERATING) + 2 yeni HITL gate (G1/G2 cycle N); `runtime/extend/{schema.py,extender_agent.py,delta_writer.py}`; idempotent delta section append (cycle = de-dupe key); BLOCKED-STACK escape hatch; +45 test
+- **M3.1.0 foundation** — state machine: 7 yeni state (DONE → EXTEND_DIALOG → EXTEND_PRD_DIALOG/APPROVAL/APPROVED → EXTEND_RFC_DRAFTING/APPROVAL/APPROVED → TASKS_GENERATING) + 2 yeni HITL gate (G1/G2 cycle N); `ortim/extend/{schema.py,extender_agent.py,delta_writer.py}`; idempotent delta section append (cycle = de-dupe key); BLOCKED-STACK escape hatch; +45 test
 - **M3.1.1 executor wiring** — `Orchestrator.generate_dag(prior_dag=...)` + 3 validator: ID collision, continuity (`> prior_max`), scope-union membership (parent §7 ∪ `### Module Breakdown (delta)` H3); `ortim run` extend dispatch (EXTEND_PRD_APPROVED → EXTEND_RFC + EXTEND_RFC_APPROVED → TASKS_READY); DAG merge persistence + `extensions: list[DagDelta]` field; +17 test
 - **Item 48 — extend-cycle AC-aggregation discipline** — `agents/orchestrator.md` `## Extend Cycle Task Granularity` section: aggregation by `(module_scope × behavioral cluster)`, 10-AC delta → 3-5 task anchor, trace-back rule (every task → delta RFC Module Breakdown row OR delta AC); runtime context block references the section by name; +2 test. Empirical (same TR brief, fresh v3 clone): 11 ACs → 4 tasks vs pre-fix 10 ACs → 10 tasks; **~60% reduction**
 - **End-to-end proof-point** — `proofpoint48` workspace: planning chain clean (delta PRD + delta RFC + delta DAG validators all silent); execution chain 3/4 task otomatik (T-007 schema first-attempt; T-008 sandbox-feedback retry; T-009 valid HITL escalation with L1 + criterion findings)
@@ -364,7 +364,7 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 ruff check .
 
 # Type check (strict)
-mypy runtime
+mypy ortim
 
 # Test (smoke + ileride birim)
 pytest
@@ -376,8 +376,8 @@ python tests\test_state_machine.py
 Code patterns:
 - LLM çağrıları → `LLMClient.call(system, user, temperature, max_tokens)` — token usage döner, audit'a `tokens={"in":..,"out":..}` field'ıyla yaz.
 - Yeni state ekliyorsan: `ProjectState`, `TRANSITIONS` ve gerekirse `HITL_GATES`'i güncelle, `tests/test_state_machine.py`'ye geçişi ekle.
-- Yeni ajan: `agents/<name>.md` (system prompt) + `runtime/agents/<name>.py` (class) + `MemoryLoader.load_agent_prompt("<name>")` zaten çalışır.
-- LLM çıktısı parse edeceksen `runtime/babel/intent.py:_strip_code_fences` reuse et.
+- Yeni ajan: `agents/<name>.md` (system prompt) + `ortim/agents/<name>.py` (class) + `MemoryLoader.load_agent_prompt("<name>")` zaten çalışır.
+- LLM çıktısı parse edeceksen `ortim/babel/intent.py:_strip_code_fences` reuse et.
 
 ## Sorun Giderme
 
@@ -406,7 +406,7 @@ Paralel mod gereksinimleri:
 - Worktree'ler `<workspace>/.worktrees/<task_id>/` altında; task DONE → merge sonrası otomatik silinir, REJECTED → cleanup'ta silinir
 - Merge conflict → task `AWAITING_HITL`, `task_status.json`'a `last_error: merge: ...` yazılır
 
-Audit'a her batch için `executor_batch_metrics` event'i düşer (wall/sum süre, speedup, merge wait, mode). `runtime/audit/decisions.jsonl` üzerinden batch maliyetleri analiz edilebilir.
+Audit'a her batch için `executor_batch_metrics` event'i düşer (wall/sum süre, speedup, merge wait, mode). `ortim/audit/decisions.jsonl` üzerinden batch maliyetleri analiz edilebilir.
 
 ## Sonraki Adım
 

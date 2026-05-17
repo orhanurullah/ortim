@@ -26,8 +26,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import pytest  # noqa: E402
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.orchestrator import (  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.orchestrator import (  # noqa: E402
     InvalidTransition,
     Project,
     ProjectState,
@@ -91,7 +91,7 @@ def _teardown_env() -> None:
 
 
 def test_gate_no_op_when_cap_env_unset() -> None:
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         project, audit = _setup(Path(tmp), cap_usd=None)
@@ -105,7 +105,7 @@ def test_gate_no_op_when_cap_env_unset() -> None:
 
 
 def test_gate_no_op_when_cap_invalid() -> None:
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         project, audit = _setup(Path(tmp), cap_usd=None)
@@ -119,7 +119,7 @@ def test_gate_no_op_when_cap_invalid() -> None:
 
 
 def test_gate_no_op_when_spend_below_cap() -> None:
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -136,7 +136,7 @@ def test_gate_no_op_when_spend_below_cap() -> None:
 
 
 def test_gate_fires_and_transitions_when_spend_reaches_cap() -> None:
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -153,7 +153,7 @@ def test_gate_fires_and_transitions_when_spend_reaches_cap() -> None:
 
 
 def test_gate_audit_event_includes_spent_cap_overage() -> None:
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -181,7 +181,7 @@ def test_gate_audit_event_includes_spent_cap_overage() -> None:
 def test_gate_does_not_refire_when_project_already_gated() -> None:
     """Idempotency: state guard prevents the gate from re-firing on a
     project that's already in BUDGET_AWAITING_APPROVAL."""
-    from runtime.main import _maybe_open_budget_gate
+    from ortim.main import _maybe_open_budget_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)

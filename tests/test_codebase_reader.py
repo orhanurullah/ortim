@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Unit tests for runtime.codebase.reader.scan_codebase.
+"""Unit tests for ortim.codebase.reader.scan_codebase.
 
 Coverage map (M1-plan §A.2 tests 1–7):
   1. Empty directory → file_count=0, truncated=False.
-  2. This repo's runtime/ tree → modules include runtime executor + orchestrator.
+  2. This repo's ortim/ tree → modules include runtime executor + orchestrator.
   3. Flutter sample fixture → frameworks=flutter, modules include lib/features/foo/.
   4. max_files cap → truncated=True.
   5. .gitignore-listed build/ dir is excluded.
@@ -23,8 +23,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.codebase import read_related, scan_codebase  # noqa: E402
-from runtime.codebase.schema import (  # noqa: E402
+from ortim.codebase import read_related, scan_codebase  # noqa: E402
+from ortim.codebase.schema import (  # noqa: E402
     CodebaseSummary,
     FileEntry,
     ModuleSymbols,
@@ -47,21 +47,21 @@ def test_empty_directory_yields_empty_summary() -> None:
 
 
 def test_scans_this_repo_runtime_tree() -> None:
-    """Scanning runtime/ should recognise pytest as tooling and surface modules."""
+    """Scanning ortim/ should recognise pytest as tooling and surface modules."""
     summary = scan_codebase(REPO_ROOT, max_files=3000)
     # We should not blow the cap on this repo (well under 3000 files post-skip).
     assert summary.truncated is False, (
-        f"runtime/ scan unexpectedly truncated; walked={summary.file_count}"
+        f"ortim/ scan unexpectedly truncated; walked={summary.file_count}"
     )
     # Pytest is configured in pyproject.toml + tests/ dir → must surface.
     fw_names = {f.name for f in summary.frameworks}
     assert "pytest" in fw_names, (
         f"pytest not detected; frameworks={[(f.name, f.confidence) for f in summary.frameworks]}"
     )
-    # At least one module under runtime/executor and one under runtime/orchestrator.
+    # At least one module under ortim/executor and one under ortim/orchestrator.
     module_paths = [m.path for m in summary.modules]
-    assert any(p.startswith("runtime/executor/") for p in module_paths), module_paths[:10]
-    assert any(p.startswith("runtime/orchestrator/") for p in module_paths), module_paths[:10]
+    assert any(p.startswith("ortim/executor/") for p in module_paths), module_paths[:10]
+    assert any(p.startswith("ortim/orchestrator/") for p in module_paths), module_paths[:10]
 
 
 def test_flutter_fixture_detected_with_correct_app_class() -> None:

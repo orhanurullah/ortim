@@ -26,13 +26,13 @@ from typer.testing import CliRunner
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.babel import StructuredIntent  # noqa: E402
-from runtime.main import _lock_prd, app  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import Project, ProjectState  # noqa: E402
-from runtime.scope import ScopeManifest, ScopedFeature, load_scope, save_scope  # noqa: E402
-from runtime.scope.schema import scope_path  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.babel import StructuredIntent  # noqa: E402
+from ortim.main import _lock_prd, app  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import Project, ProjectState  # noqa: E402
+from ortim.scope import ScopeManifest, ScopedFeature, load_scope, save_scope  # noqa: E402
+from ortim.scope.schema import scope_path  # noqa: E402
 
 
 def _project_at_prd_dialog(workspace_root: Path) -> tuple[Project, Path]:
@@ -67,7 +67,7 @@ def test_lock_prd_seeds_scope_and_transitions_to_scope_locking(
 ) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit_path = workspace / "audit.jsonl"
@@ -99,7 +99,7 @@ def test_re_lock_prd_does_not_clobber_existing_scope(
     phase 2), running `_lock_prd` again must NOT silently re-seed."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit = AuditLogger(path=workspace / "audit.jsonl")
@@ -141,7 +141,7 @@ def test_scope_set_flag_rewrites_phase_and_locks(
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit = AuditLogger(path=workspace / "audit.jsonl")
@@ -180,7 +180,7 @@ def test_scope_command_rejects_wrong_state(
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("runtime.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
 
         # Project still in PRD_DIALOG — scope command must refuse.
         project, _ = _project_at_prd_dialog(root)

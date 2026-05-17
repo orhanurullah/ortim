@@ -16,8 +16,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.llm import resolve_provider  # noqa: E402
-from runtime.llm.router import _env_for, client_for  # noqa: E402
+from ortim.llm import resolve_provider  # noqa: E402
+from ortim.llm.router import _env_for, client_for  # noqa: E402
 
 
 def _scrub_env(*keys: str) -> dict[str, str | None]:

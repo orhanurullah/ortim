@@ -28,9 +28,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from runtime.architecture.locked_stack import LockedStack
-from runtime.executor.status import TaskStatus, TaskStatusFile
-from runtime.orchestrator.task_dag import TaskDAG, TaskSpec
+from ortim.architecture.locked_stack import LockedStack
+from ortim.executor.status import TaskStatus, TaskStatusFile
+from ortim.orchestrator.task_dag import TaskDAG, TaskSpec
 from tests.e2e.conftest import read_json, read_text
 
 pytestmark = pytest.mark.e2e

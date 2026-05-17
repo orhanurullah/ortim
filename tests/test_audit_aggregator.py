@@ -19,8 +19,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger, aggregate, to_json_dict  # noqa: E402
-from runtime.audit.logger import _derive_category  # noqa: E402
+from ortim.audit import AuditLogger, aggregate, to_json_dict  # noqa: E402
+from ortim.audit.logger import _derive_category  # noqa: E402
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:

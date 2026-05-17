@@ -21,16 +21,16 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.agents.architect import ArchitectAgent  # noqa: E402
-from runtime.architecture import Tier, TierScore  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.codebase import (  # noqa: E402
+from ortim.agents.architect import ArchitectAgent  # noqa: E402
+from ortim.architecture import Tier, TierScore  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.codebase import (  # noqa: E402
     CodebaseSummary,
     FrameworkHint,
     ModuleSymbols,
 )
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 
 @dataclass

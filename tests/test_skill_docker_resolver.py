@@ -17,11 +17,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture import LockedStack  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
-from runtime.skills import load_all_skills  # noqa: E402
-from runtime.skills.resolver import resolve_for_task  # noqa: E402
-from runtime.skills.schema import Skill, SkillTriggers  # noqa: E402
+from ortim.architecture import LockedStack  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
+from ortim.skills import load_all_skills  # noqa: E402
+from ortim.skills.resolver import resolve_for_task  # noqa: E402
+from ortim.skills.schema import Skill, SkillTriggers  # noqa: E402
 
 
 def _stack(language: str = "TypeScript") -> LockedStack:

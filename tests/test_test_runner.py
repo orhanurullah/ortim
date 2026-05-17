@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Tests for runtime.executor.test_runner.configured_plan workspace fallback.
+"""Tests for ortim.executor.test_runner.configured_plan workspace fallback.
 
 Phase 0 (9c) introduces a workspace-scoped fallback: if `AI_FACTORY_TEST_CMD`
 is not set as an env var, but a `.ai-factory.env` file exists in the
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from runtime.executor.test_runner import (
+from ortim.executor.test_runner import (
     _apply_scope,
     _detect_runner,
     configured_plan,

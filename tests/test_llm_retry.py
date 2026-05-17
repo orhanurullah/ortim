@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from runtime.llm.client import MAX_RETRIES, LLMResponse, _is_retryable
+from ortim.llm.client import MAX_RETRIES, LLMResponse, _is_retryable
 
 
 # ---- _is_retryable classification ----
@@ -84,7 +84,7 @@ def test_response_retries_nonzero():
 
 
 def test_unverifiable_reason_criterion_design():
-    from runtime.executor.reviewer import CriterionVerdict, ReviewVerdict
+    from ortim.executor.reviewer import CriterionVerdict, ReviewVerdict
 
     v = ReviewVerdict(criteria_verdicts=[
         CriterionVerdict(
@@ -102,7 +102,7 @@ def test_unverifiable_reason_criterion_design():
 
 
 def test_unverifiable_reason_test_infrastructure():
-    from runtime.executor.reviewer import CriterionVerdict, ReviewVerdict
+    from ortim.executor.reviewer import CriterionVerdict, ReviewVerdict
 
     v = ReviewVerdict(criteria_verdicts=[
         CriterionVerdict(
@@ -122,7 +122,7 @@ def test_unverifiable_reason_test_infrastructure():
 
 def test_unverifiable_backward_compat_none_reason():
     """Old LLM outputs that don't set unverifiable_reason default to criterion_design."""
-    from runtime.executor.reviewer import CriterionVerdict, ReviewVerdict
+    from ortim.executor.reviewer import CriterionVerdict, ReviewVerdict
 
     v = ReviewVerdict(criteria_verdicts=[
         CriterionVerdict(
@@ -137,7 +137,7 @@ def test_unverifiable_backward_compat_none_reason():
 
 
 def test_unverifiable_mixed_modes():
-    from runtime.executor.reviewer import CriterionVerdict, ReviewVerdict
+    from ortim.executor.reviewer import CriterionVerdict, ReviewVerdict
 
     v = ReviewVerdict(criteria_verdicts=[
         CriterionVerdict(
@@ -174,7 +174,7 @@ def test_critical_role_warning(capsys, monkeypatch):
     monkeypatch.delenv("ARCHITECT_PROVIDER", raising=False)
     monkeypatch.delenv("ARCHITECT_MODEL", raising=False)
 
-    from runtime.llm.router import client_for
+    from ortim.llm.router import client_for
 
     client = client_for("architect")
     captured = capsys.readouterr()
@@ -189,7 +189,7 @@ def test_non_critical_role_no_warning(capsys, monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "deepseek")
     monkeypatch.delenv("BABEL_PROVIDER", raising=False)
 
-    from runtime.llm.router import client_for
+    from ortim.llm.router import client_for
 
     client = client_for("babel")
     captured = capsys.readouterr()

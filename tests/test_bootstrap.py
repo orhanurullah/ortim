@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Tests for runtime.architecture.bootstrap.bootstrap_workspace_layout.
+"""Tests for ortim.architecture.bootstrap.bootstrap_workspace_layout.
 
 Covers the M1.5 architectural fix: scaffolding (module folders + tier-aware
 root files) is owned by the system, not the Worker. The Worker therefore
@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from runtime.architecture import LockedStack, bootstrap_workspace_layout
-from runtime.architecture.bootstrap import _framework_to_packages
+from ortim.architecture import LockedStack, bootstrap_workspace_layout
+from ortim.architecture.bootstrap import _framework_to_packages
 
 
 def test_creates_module_folders_with_gitkeep(tmp_path: Path) -> None:

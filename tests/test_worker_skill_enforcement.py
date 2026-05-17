@@ -26,16 +26,16 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import pytest  # noqa: E402
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.executor import TaskStatus, TaskStatusFile, execute_task  # noqa: E402
-from runtime.executor.worker import (  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.executor import TaskStatus, TaskStatusFile, execute_task  # noqa: E402
+from ortim.executor.worker import (  # noqa: E402
     WorkerAgent,
     WorkerSkillNotConsulted,
 )
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
-from runtime.skills import Skill, SkillTriggers  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
+from ortim.skills import Skill, SkillTriggers  # noqa: E402
 
 
 class FakeLLM:

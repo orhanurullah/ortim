@@ -21,8 +21,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.executor import (  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.executor import (  # noqa: E402
     PerfReviewerAgent,
     PerfVerdict,
     ReviewerChain,
@@ -34,10 +34,10 @@ from runtime.executor import (  # noqa: E402
     TestVerdict,
     execute_task,
 )
-from runtime.executor.worker import FileChange, WorkerOutput  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
-from runtime.orchestrator import TaskSpec  # noqa: E402
+from ortim.executor.worker import FileChange, WorkerOutput  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
+from ortim.orchestrator import TaskSpec  # noqa: E402
 
 
 class FakeLLM:
@@ -421,8 +421,8 @@ def test_reviewer_length_mismatch_triggers_retry_then_succeeds() -> None:
     """Phase 0+ length validator: LLM first emits 1-of-2 criteria (dropped
     one — observed in todo-greenfield-4 T-005, 9-of-13). Validator catches,
     retry tells the LLM the expected count, second attempt emits both."""
-    from runtime.executor.reviewer import CodeReviewerAgent
-    from runtime.executor.worker import FileChange, WorkerOutput
+    from ortim.executor.reviewer import CodeReviewerAgent
+    from ortim.executor.worker import FileChange, WorkerOutput
 
     short_verdict = json.dumps({
         "criteria_verdicts": [
@@ -486,8 +486,8 @@ def test_reviewer_length_mismatch_triggers_retry_then_succeeds() -> None:
 def test_reviewer_length_mismatch_three_strikes_raises() -> None:
     """Three consecutive count mismatches → RuntimeError (operator must
     investigate; retrying further is wasted budget)."""
-    from runtime.executor.reviewer import CodeReviewerAgent
-    from runtime.executor.worker import FileChange, WorkerOutput
+    from ortim.executor.reviewer import CodeReviewerAgent
+    from ortim.executor.worker import FileChange, WorkerOutput
 
     short_verdict = json.dumps({
         "criteria_verdicts": [

@@ -16,8 +16,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.budget import BudgetTracker  # noqa: E402
-from runtime.llm.providers import PROVIDERS  # noqa: E402
+from ortim.budget import BudgetTracker  # noqa: E402
+from ortim.llm.providers import PROVIDERS  # noqa: E402
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:

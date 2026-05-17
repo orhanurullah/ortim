@@ -20,7 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.skills.loader import load_all_skills  # noqa: E402
+from ortim.skills.loader import load_all_skills  # noqa: E402
 
 
 def _make_skill_repo(files: dict[str, str]) -> Path:

@@ -20,12 +20,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture import LockedStack  # noqa: E402
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.codebase import CodebaseSummary  # noqa: E402
-from runtime.extend import BLOCKED_STACK_MARKER, ExtenderAgent  # noqa: E402
-from runtime.llm.client import LLMResponse  # noqa: E402
-from runtime.memory import MemoryLoader  # noqa: E402
+from ortim.architecture import LockedStack  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.codebase import CodebaseSummary  # noqa: E402
+from ortim.extend import BLOCKED_STACK_MARKER, ExtenderAgent  # noqa: E402
+from ortim.llm.client import LLMResponse  # noqa: E402
+from ortim.memory import MemoryLoader  # noqa: E402
 
 
 @dataclass
@@ -192,7 +192,7 @@ def test_draft_delta_rfc_includes_codebase_summary_when_present() -> None:
     """When CodebaseSummary is provided, it must reach the prompt under
     the 'existing codebase' header so the LLM can ground the module
     breakdown in real on-disk modules."""
-    from runtime.codebase.schema import FrameworkHint, ModuleSymbols
+    from ortim.codebase.schema import FrameworkHint, ModuleSymbols
 
     llm, agent, _, _ = _setup()
     summary = CodebaseSummary(

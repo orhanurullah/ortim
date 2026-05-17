@@ -13,21 +13,21 @@ from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from runtime.executor.sandbox import (  # noqa: E402
+from ortim.executor.sandbox import (  # noqa: E402
     SandboxViolation,
     check_extension,
     check_in_scope,
     normalize_relative,
 )
-from runtime.executor.status import (  # noqa: E402
+from ortim.executor.status import (  # noqa: E402
     TaskRunRecord,
     TaskStatus,
     TaskStatusFile,
 )
-from runtime.executor.reviewer import ReviewVerdict  # noqa: E402
-from runtime.executor.worker import FileChange, WorkerOutput  # noqa: E402
-from runtime.executor import git_ops  # noqa: E402
-from runtime.executor import test_runner  # noqa: E402
+from ortim.executor.reviewer import ReviewVerdict  # noqa: E402
+from ortim.executor.worker import FileChange, WorkerOutput  # noqa: E402
+from ortim.executor import git_ops  # noqa: E402
+from ortim.executor import test_runner  # noqa: E402
 
 
 # ---------- normalize_relative ----------
@@ -574,7 +574,7 @@ def test_concurrent_file_lock_serializes_threads() -> None:
     import threading
     import time
 
-    from runtime.concurrency import file_lock
+    from ortim.concurrency import file_lock
 
     state = {"current": 0, "max_concurrent": 0}
     state_lock = threading.Lock()

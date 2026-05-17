@@ -23,7 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.extend.drift import (  # noqa: E402
+from ortim.extend.drift import (  # noqa: E402
     KIND_ID_COLLISION,
     KIND_ID_CONTINUITY,
     KIND_MODULE_SCOPE,
@@ -374,7 +374,7 @@ def test_multicycle_integration_baseline_clean_extend_introduces_drift() -> None
 
 
 def test_to_json_dict_stable_schema() -> None:
-    from runtime.extend.drift import to_json_dict
+    from ortim.extend.drift import to_json_dict
 
     with tempfile.TemporaryDirectory() as tmp:
         ws = Path(tmp)

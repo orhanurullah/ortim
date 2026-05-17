@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.babel import app_class_from_hints  # noqa: E402
+from ortim.babel import app_class_from_hints  # noqa: E402
 
 
 def test_empty_hints_returns_none() -> None:

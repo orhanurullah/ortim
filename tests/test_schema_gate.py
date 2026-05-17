@@ -25,8 +25,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import pytest  # noqa: E402
 
-from runtime.audit import AuditLogger  # noqa: E402
-from runtime.orchestrator import (  # noqa: E402
+from ortim.audit import AuditLogger  # noqa: E402
+from ortim.orchestrator import (  # noqa: E402
     InvalidTransition,
     Project,
     ProjectState,
@@ -98,7 +98,7 @@ def _project_in_state(tmp: Path, state: ProjectState) -> Project:
 
 
 def test_gate_fires_when_dag_contains_migration_task() -> None:
-    from runtime.main import _maybe_open_schema_gate
+    from ortim.main import _maybe_open_schema_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -123,7 +123,7 @@ def test_gate_fires_when_dag_contains_migration_task() -> None:
 
 
 def test_gate_is_noop_when_dag_has_no_migration_tasks() -> None:
-    from runtime.main import _maybe_open_schema_gate
+    from ortim.main import _maybe_open_schema_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -145,7 +145,7 @@ def test_gate_is_noop_when_dag_has_no_migration_tasks() -> None:
 def test_gate_does_not_refire_when_state_is_already_executing() -> None:
     """Once schema is approved (operator advances to EXECUTING), a
     subsequent run-all on the same DAG must not re-open the gate."""
-    from runtime.main import _maybe_open_schema_gate
+    from ortim.main import _maybe_open_schema_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
@@ -168,7 +168,7 @@ def test_gate_does_not_refire_when_state_is_already_executing() -> None:
 
 
 def test_gate_emits_audit_event_with_task_ids() -> None:
-    from runtime.main import _maybe_open_schema_gate
+    from ortim.main import _maybe_open_schema_gate
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)

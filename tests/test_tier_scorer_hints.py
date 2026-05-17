@@ -21,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from runtime.architecture.golden_paths import (  # noqa: E402
+from ortim.architecture.golden_paths import (  # noqa: E402
     AppClass,
     GoldenPathInputs,
     OpsCapacity,
@@ -127,7 +127,7 @@ def test_t2_blocker_reason_names_the_offending_hint() -> None:
     user can see the trace in tier_score.cons / RFC §2."""
     inputs = _small_solo_web()
     inputs.user_stack_hints = ["SQLite"]
-    from runtime.architecture.golden_paths import _score_t2
+    from ortim.architecture.golden_paths import _score_t2
 
     t2 = _score_t2(inputs)
     assert t2.blockers

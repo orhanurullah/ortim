@@ -118,7 +118,7 @@ No rule applies. Fall back:
 ```
 
 ## Deterministic step (no LLM)
-The output of Call 1 is fed to `runtime.architecture.select_tier()` which picks the tier using rule-based scoring. Architect does NOT see this scoring code or override it.
+The output of Call 1 is fed to `ortim.architecture.select_tier()` which picks the tier using rule-based scoring. Architect does NOT see this scoring code or override it.
 
 ## Call 2 — Draft RFC for the selected tier
 
