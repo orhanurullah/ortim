@@ -8,6 +8,13 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Build artifacts (regenerable via `python -m build`)
+dist/
+build/
+
+# Stray sdist extracts (accidental tar -xf in repo root)
+ortim-[0-9]*/
+
 # Environment
 .env
 .env.local
