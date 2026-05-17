@@ -1,10 +1,23 @@
 [project]
 name = "ortim"
-version = "0.1.0"
+version = "0.8.0"
 description = "Ortim — agentic dev pipeline with deterministic architecture, audit, and gated execution"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "FSL-1.1-Apache-2.0" }
 authors = [{ name = "ortim.dev" }]
+keywords = ["llm", "agents", "code-generation", "ai-pipeline", "orchestration"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Build Tools",
+]
 dependencies = [
     "anthropic>=0.39.0",
     "pydantic>=2.0",

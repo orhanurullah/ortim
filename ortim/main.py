@@ -39,8 +39,19 @@ from ortim.orchestrator import (
 
 load_dotenv()
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.6d)")
+app = typer.Typer(help="Ortim — agentic dev pipeline (v0.8.0)")
 console = Console()
+
+# Deprecation: the `ai-factory` CLI alias is kept for backwards
+# compatibility but slated for removal in R7 (one minor release after
+# the rename). Warn once per process when invoked under that name.
+_argv0 = Path(sys.argv[0]).stem.lower() if sys.argv else ""
+if _argv0 == "ai-factory":
+    print(
+        "WARNING: the `ai-factory` command is deprecated; use `ortim` instead "
+        "(legacy alias will be removed in a future release)",
+        file=sys.stderr,
+    )
 
 WORKSPACE_ROOT = Path(os.getenv("WORKSPACE_ROOT", "./workspaces"))
 REPO_ROOT = Path(__file__).resolve().parent.parent
