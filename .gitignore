@@ -21,6 +21,9 @@ workspaces/*/
 # Audit logs
 ortim/audit/*.log
 ortim/audit/*.jsonl
+# Legacy path (kept until R7 — operators with old AUDIT_LOG_PATH in .env)
+runtime/audit/*.log
+runtime/audit/*.jsonl
 
 # IDE
 .vscode/
