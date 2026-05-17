@@ -1,11 +1,11 @@
 [project]
 name = "ortim"
-version = "0.8.0"
+version = "0.8.1"
 description = "Ortim — agentic dev pipeline with deterministic architecture, audit, and gated execution"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "FSL-1.1-Apache-2.0" }
-authors = [{ name = "ortim.dev" }]
+authors = [{ name = "ortim.dev", email = "contact@ortim.dev" }]
 keywords = ["llm", "agents", "code-generation", "ai-pipeline", "orchestration"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -37,7 +37,10 @@ dev = [
 
 [project.urls]
 Homepage = "https://ortim.dev"
-Source = "https://ortim.dev"
+Documentation = "https://ortim.dev/docs"
+Source = "https://github.com/ortimdev/ortim"
+Issues = "https://github.com/ortimdev/ortim/issues"
+Changelog = "https://github.com/ortimdev/ortim/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ortim = "ortim.main:app"

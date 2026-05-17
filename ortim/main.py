@@ -39,7 +39,7 @@ from ortim.orchestrator import (
 
 load_dotenv()
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.8.0)")
+app = typer.Typer(help="Ortim — agentic dev pipeline (v0.8.1)")
 console = Console()
 
 # Deprecation: the `ai-factory` CLI alias is kept for backwards
