@@ -12,7 +12,7 @@ Three artifacts live under `<workspace>/`:
                          the non-dialog flow)
 
 Per-state turn history lives under `<workspace>/.dialog/<state>_turns.jsonl`
-so we can enforce the per-state turn cap (`AI_FACTORY_DIALOG_TURN_CAP`,
+so we can enforce the per-state turn cap (`ORTIM_DIALOG_TURN_CAP`,
 default 10) without re-reading every audit event.
 """
 

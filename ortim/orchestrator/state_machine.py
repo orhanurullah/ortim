@@ -17,9 +17,9 @@ from enum import Enum
 class ProjectState(str, Enum):
     INTAKE = "intake"
     BABEL_PROCESSING = "babel_processing"
-    # M2 dialog states. Engaged when AI_FACTORY_DIALOG_MODE=on (default).
+    # M2 dialog states. Engaged when ORTIM_DIALOG_MODE=on (default).
     # Legacy direct BABEL_PROCESSING -> PRD_DRAFTING transition is preserved
-    # for AI_FACTORY_DIALOG_MODE=off and for older fixtures/tests.
+    # for ORTIM_DIALOG_MODE=off and for older fixtures/tests.
     INTAKE_DIALOG = "intake_dialog"
     STACK_DIALOG = "stack_dialog"
     PRD_DIALOG = "prd_dialog"
@@ -64,7 +64,7 @@ TRANSITIONS: dict[ProjectState, set[ProjectState]] = {
         ProjectState.FAILED,
     },
     ProjectState.BABEL_PROCESSING: {
-        ProjectState.PRD_DRAFTING,        # legacy / AI_FACTORY_DIALOG_MODE=off
+        ProjectState.PRD_DRAFTING,        # legacy / ORTIM_DIALOG_MODE=off
         ProjectState.INTAKE_DIALOG,       # M2 default: enter conversational intake
         ProjectState.FAILED,
     },

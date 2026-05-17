@@ -2,18 +2,22 @@
 # Copyright (c) 2026 ortim.dev
 """Run a configurable test command on the workspace before review.
 
-Opt-in via `AI_FACTORY_TEST_CMD` (e.g. `"pytest -q"`, `"npm test --silent"`),
-or — Phase 0 (M1.5+) — via a workspace-local `.ai-factory.env` file written
+Opt-in via `ORTIM_TEST_CMD` (e.g. `"pytest -q"`, `"npm test --silent"`),
+or — Phase 0 (M1.5+) — via a workspace-local `.ortim.env` file written
 by the bootstrap layer at scaffolding time. The file format is one
 `KEY=VALUE` per line, comments with `#`. Env var wins over file when both
 are set.
 
 We deliberately avoid filesystem auto-detection (looking for `package.json`
 etc.) — that path is too easy to false-positive on a stray manifest.
-Bootstrap writes `.ai-factory.env` only when the tier+app_class actually
+Bootstrap writes `.ortim.env` only when the tier+app_class actually
 implies a known test runner.
 
-Disable explicitly with `AI_FACTORY_TESTS_ENABLED=false`.
+Disable explicitly with `ORTIM_TESTS_ENABLED=false`.
+
+Legacy compatibility: the previous file name `.ai-factory.env` and key
+`AI_FACTORY_TEST_CMD` are still read as fallbacks. They will be removed
+after one minor release.
 """
 
 from __future__ import annotations
@@ -24,6 +28,8 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from ortim.env import env_get
 
 
 def _resolve_binary(name: str) -> str:
@@ -130,14 +136,14 @@ def _apply_scope(parts: list[str], scope: str | None) -> list[str]:
 
 
 def configured_plan(workspace: Path | None = None) -> TestPlan | None:
-    if os.getenv("AI_FACTORY_TESTS_ENABLED", "true").lower() == "false":
+    if (env_get("ORTIM_TESTS_ENABLED", "true") or "true").lower() == "false":
         return None
-    cmd = os.getenv("AI_FACTORY_TEST_CMD", "").strip()
-    rationale_source = "AI_FACTORY_TEST_CMD"
+    cmd = (env_get("ORTIM_TEST_CMD", "") or "").strip()
+    rationale_source = "ORTIM_TEST_CMD"
     if not cmd and workspace is not None:
-        cmd = _read_workspace_test_cmd(workspace)
+        cmd, source_file = _read_workspace_test_cmd(workspace)
         if cmd:
-            rationale_source = ".ai-factory.env"
+            rationale_source = source_file
     if not cmd:
         return None
     # posix=True works on both Windows and POSIX: quotes are stripped and
@@ -150,29 +156,35 @@ def configured_plan(workspace: Path | None = None) -> TestPlan | None:
     return TestPlan(parts, f"{rationale_source}={cmd}")
 
 
-def _read_workspace_test_cmd(workspace: Path) -> str:
-    """Read `AI_FACTORY_TEST_CMD` from `<workspace>/.ai-factory.env`, if present.
+def _read_workspace_test_cmd(workspace: Path) -> tuple[str, str]:
+    """Read a `*_TEST_CMD` value from `<workspace>/.ortim.env` (or the legacy
+    `.ai-factory.env`) when one is present.
 
-    Tiny line-based parser — no python-dotenv dep. Strips quotes and ignores
-    blank lines and `#` comments. Returns "" when the file is missing,
-    unreadable, or doesn't define the key.
+    Prefers `.ortim.env` + `ORTIM_TEST_CMD`. Falls back to the same file with
+    the legacy key, then to `.ai-factory.env` with either key. Returns
+    `(cmd, source_label)` where `source_label` is the filename that won.
     """
-    env_path = workspace / ".ai-factory.env"
-    if not env_path.exists():
-        return ""
-    try:
-        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            if key.strip() == "AI_FACTORY_TEST_CMD":
-                return value.strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ""
+    for fname in (".ortim.env", ".ai-factory.env"):
+        env_path = workspace / fname
+        if not env_path.exists():
+            continue
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        # First pass: preferred key. Second pass: legacy key. Within each
+        # file, ORTIM_TEST_CMD wins over AI_FACTORY_TEST_CMD if both appear.
+        for wanted_key in ("ORTIM_TEST_CMD", "AI_FACTORY_TEST_CMD"):
+            for raw_line in lines:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key.strip() == wanted_key:
+                    return value.strip().strip('"').strip("'"), fname
+    return "", ""
 
 
 def run_tests(
@@ -182,9 +194,9 @@ def run_tests(
 ) -> TestResult:
     plan = configured_plan(workspace)
     if plan is None:
-        if os.getenv("AI_FACTORY_TESTS_ENABLED", "true").lower() == "false":
-            return TestResult(None, "disabled via AI_FACTORY_TESTS_ENABLED=false", 0, "", "")
-        return TestResult(None, "no test command configured (set AI_FACTORY_TEST_CMD)", 0, "", "")
+        if (env_get("ORTIM_TESTS_ENABLED", "true") or "true").lower() == "false":
+            return TestResult(None, "disabled via ORTIM_TESTS_ENABLED=false", 0, "", "")
+        return TestResult(None, "no test command configured (set ORTIM_TEST_CMD)", 0, "", "")
 
     scoped_cmd = _apply_scope(plan.cmd, scope)
     scope_applied = scoped_cmd is not plan.cmd

@@ -11,17 +11,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from ortim.architecture import LockedStack
+from ortim.env import env_get
 from ortim.orchestrator.state_machine import ProjectState
 
-DIALOG_MODE_ENV = "AI_FACTORY_DIALOG_MODE"
-DIALOG_TURN_CAP_ENV = "AI_FACTORY_DIALOG_TURN_CAP"
+DIALOG_MODE_ENV = "ORTIM_DIALOG_MODE"
+DIALOG_TURN_CAP_ENV = "ORTIM_DIALOG_TURN_CAP"
 DIALOG_TURN_CAP_DEFAULT = 10
 
 _DIALOG_STATES = frozenset(
@@ -34,14 +34,14 @@ _DIALOG_STATES = frozenset(
 
 
 def dialog_mode_on() -> bool:
-    """Default on. Operators opt out via `AI_FACTORY_DIALOG_MODE=off`."""
-    raw = os.getenv(DIALOG_MODE_ENV, "on").strip().lower()
+    """Default on. Operators opt out via `ORTIM_DIALOG_MODE=off`."""
+    raw = (env_get(DIALOG_MODE_ENV, "on") or "on").strip().lower()
     return raw not in ("0", "off", "false", "no")
 
 
 def turn_cap() -> int:
     """Per-state cap on refine turns before the CLI requires --force."""
-    raw = os.getenv(DIALOG_TURN_CAP_ENV)
+    raw = env_get(DIALOG_TURN_CAP_ENV)
     if raw is None:
         return DIALOG_TURN_CAP_DEFAULT
     try:

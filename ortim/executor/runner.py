@@ -20,7 +20,7 @@ Two git modes:
     responsible for serializing the merge back to main and removing the
     worktree (only `run-all --parallel` does this today).
 
-Tests are opt-in via `AI_FACTORY_TEST_CMD`. Hard-veto reviewers are opt-in
+Tests are opt-in via `ORTIM_TEST_CMD`. Hard-veto reviewers are opt-in
 via `ReviewerChain` — when `None`, the legacy single-CodeReviewer behavior
 is preserved (so existing smoke tests keep working).
 """
@@ -516,7 +516,7 @@ def execute_task(
         if infra_failures and not design_failures:
             error_msg = (
                 "test_infrastructure_unavailable "
-                "(set AI_FACTORY_TEST_CMD to resolve)"
+                "(set ORTIM_TEST_CMD to resolve)"
             )
         elif design_failures and not infra_failures:
             error_msg = "criteria_design_failure (ambiguous criteria — rewrite needed)"

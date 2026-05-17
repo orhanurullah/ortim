@@ -50,7 +50,7 @@ DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Opsiyonel — proje başına maliyet üst sınırı (USD)
-AI_FACTORY_BUDGET_CAP_USD=2.00
+ORTIM_BUDGET_CAP_USD=2.00
 ```
 
 **Neden ikisi de opsiyonel ama DEEPSEEK_API_KEY pratik gereklilik?**
@@ -65,7 +65,7 @@ Yalnız DeepSeek key'i ile sistem tamamen işler. Anthropic key'i eklersen kriti
 
 Default: `ortim/workspaces/`. Her proje bu dizin altında kendi UUID kısa-id'siyle bir alt-klasör olur. `.gitignore`'da olduğu için commit'lenmez (kendi projen içinde de aynı pattern'i takip et).
 
-İstersen `.env`'de `AI_FACTORY_WORKSPACE_ROOT=/path/to/dir` ile değiştir.
+İstersen `.env`'de `ORTIM_WORKSPACE_ROOT=/path/to/dir` ile değiştir.
 
 ---
 
@@ -298,7 +298,7 @@ Worker her task için:
 1. RFC + task brief + skill'leri okur
 2. Kod yazar (FILE_BLOCK formatında WorkerOutput)
 3. Sandbox structural validator geçer mi?
-4. Test runner çalışır (`.ai-factory.env`'de tanımlı `AI_FACTORY_TEST_CMD`)
+4. Test runner çalışır (`.ortim.env`'de tanımlı `ORTIM_TEST_CMD`)
 5. Reviewer chain (Code/Security/Test/Perf) verdict döner
 6. APPROVED → DONE; REJECT → 3 retry'la kadar; AWAITING_HITL → durur
 
@@ -334,7 +334,7 @@ Ortim deterministic state machine + audit trail ile "AI ne yaptı" sorusunu ceva
 - DAG'da schema/migration task'ı varsa state `SCHEMA_AWAITING_APPROVAL` olur. SQL'i oku, prod-time'da downtime riski var mı bak.
 
 ### G7 — Budget gate (otomatik tetiklenir)
-- `AI_FACTORY_BUDGET_CAP_USD` aşılınca state `BUDGET_AWAITING_APPROVAL`. Cap'i artır veya `paused`'a düşür.
+- `ORTIM_BUDGET_CAP_USD` aşılınca state `BUDGET_AWAITING_APPROVAL`. Cap'i artır veya `paused`'a düşür.
 
 ### Task-level — AWAITING_HITL
 - Worker üç deneme sonra başarısız olursa veya SecurityReviewer hard veto verirse o task `AWAITING_HITL`. Manuel müdahale gerek (bkz. [`failure-recovery.md`](../runbook/failure-recovery.md)).
@@ -373,13 +373,13 @@ Ortim deterministic state machine + audit trail ile "AI ne yaptı" sorusunu ceva
 
 İki ana sebep:
 - **Sandbox/criteria failure** — Worker 3 deneme sonra başarısız. `tasks/T-NNN.md` ve audit log'a bak. `last_review_reasons` field'ı sebebi gösterir.
-- **`test_infrastructure_unavailable`** — test runner yoksa veya kırıksa (item 24). `.ai-factory.env`'deki `AI_FACTORY_TEST_CMD` doğru mu?
+- **`test_infrastructure_unavailable`** — test runner yoksa veya kırıksa (item 24). `.ortim.env`'deki `ORTIM_TEST_CMD` doğru mu?
 
 Çözüm yolu: [`failure-recovery.md`](../runbook/failure-recovery.md).
 
 ### 6.4 Cost spike
 
-`AI_FACTORY_BUDGET_CAP_USD` set et (örn. 2.00 USD). Cap aşılınca G7 açılır, otomatik durur.
+`ORTIM_BUDGET_CAP_USD` set et (örn. 2.00 USD). Cap aşılınca G7 açılır, otomatik durur.
 
 Aşan kalemler genellikle:
 - Architect Anthropic'te + RFC drafting retry'a girdi (drift validator tetikledi)

@@ -40,7 +40,7 @@ CLI komutu: `ortim` (canonical) — `ai-factory` alias geriye uyumluluk için ko
 | **Phase 0 — Foundation hardening (2026-05-08)** | |
 | Reviewer rubric (per-criterion verdict + L1 ayrım + `unverifiable` 2-mode) | OK |
 | Orchestrator binary acceptance criteria (Hard Rule 10 ban-list) | OK |
-| Test runner auto-detect (`.ai-factory.env` from tier+app_class) | OK |
+| Test runner auto-detect (`.ortim.env` from tier+app_class) | OK |
 | Reviewer length validator (retry-with-correction) + sandbox feedback in `prior_reasons` | OK |
 | **M2 — Conversational Intake (2026-05-13)** | |
 | Dialog states `INTAKE_DIALOG` / `STACK_DIALOG` / `PRD_DIALOG` + `ortim discuss`/`refine`/`lock`/`show` | OK |
@@ -232,8 +232,8 @@ ortim/                          # repo dizini (canonical brand: Ortim)
 - **`ortim/executor/worker.py`** — `WorkerAgent` (LLM + sandbox-validated `WorkerOutput`); reject ettiğinde retry'da prior reviewer reasons'ı yeni prompt'a inject eder
 - **`ortim/executor/reviewer.py`** — `CodeReviewerAgent` (soft veto; test result görür, fail varsa hard reject)
 - **`ortim/executor/status.py`** — `task_status.json` sidecar (PENDING/IN_PROGRESS/DONE/FAILED/AWAITING_HITL + attempts + last verdict)
-- **`ortim/executor/git_ops.py`** — subprocess wrapper: `ensure_repo` (init + main + seed commit), `start_task_branch`, `commit_changes`, `merge_task_to_main`, `abandon_task_branch`. Env-driven via `AI_FACTORY_GIT_ENABLED=auto|true|false`.
-- **`ortim/executor/test_runner.py`** — `AI_FACTORY_TEST_CMD` set edilirse subprocess'le çalışır (timeout, exit code, stdout/stderr tail). Auto-detect yok — kullanıcı açık seçim yapar.
+- **`ortim/executor/git_ops.py`** — subprocess wrapper: `ensure_repo` (init + main + seed commit), `start_task_branch`, `commit_changes`, `merge_task_to_main`, `abandon_task_branch`. Env-driven via `ORTIM_GIT_ENABLED=auto|true|false`.
+- **`ortim/executor/test_runner.py`** — `ORTIM_TEST_CMD` set edilirse subprocess'le çalışır (timeout, exit code, stdout/stderr tail). Auto-detect yok — kullanıcı açık seçim yapar.
 - **`ortim/executor/runner.py`** — `execute_task()` çekirdek pipeline: Worker → write files → run tests → Reviewer → commit/abandon. CLI thin wrapper.
 - **CLI:** `execute <id> <task-id>` (tek task), `run-all <id>` (DAG'ı topolojik batch'lerde sıralı koştur)
 - **Smoke test:** 30/30 (`tests/test_executor.py`, LLM-free; git lifecycle dahil)
@@ -272,7 +272,7 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 - **`agents/perf_reviewer.md` + `ortim/executor/perf_reviewer.py`** — `PerfReviewerAgent` (soft veto). N+1, missing index, unbounded loop, sync I/O, bundle bloat, missing pagination. Bulgular `last_review_suggestions`'e `[perf] ...` etiketiyle düşer; merge'i blok etmez.
 - **`ortim/executor/runner.py:ReviewerChain`** — opsiyonel `(security, test, perf)`; her biri bağımsız None olabilir. Pipeline: CodeReviewer + tests OK → Security → (OK ise) Test → (her durumda) Perf. Hard veto yakaladığında: **retry budget'ı atlanır, task doğrudan `AWAITING_HITL`** (security/test gap'i aynı Worker'ı yeniden çağırarak çözülmez).
 - **`ExecutionResult.verdicts`** ve **`blocked_by`** — her reviewer'ın çıktısı saklanır; hard veto veren reviewer'ın adı `blocked_by`'da.
-- **`AI_FACTORY_HARD_REVIEWERS=on`** env flag'i; default `off` (geriye uyumlu — pre-6b davranış). API key eksik bir reviewer için degrade-warn (chain'in geri kalanı çalışmaya devam).
+- **`ORTIM_HARD_REVIEWERS=on`** env flag'i; default `off` (geriye uyumlu — pre-6b davranış). API key eksik bir reviewer için degrade-warn (chain'in geri kalanı çalışmaya devam).
 - **CLI:** `ortim execute` ve `run-all` çıktısında `BLOCKED` etiketi + `[security]/[test]/[perf]` etiketli reasons.
 - **Smoke test:** 7 yeni test (`test_reviewer_chain.py`); `FakeLLM` ile gerçek API çağrısız: legacy chain=None davranışı, security hard veto → AWAITING_HITL, test hard veto sonrası, perf soft-only, verdict parse'ları. Tüm suite 114/114.
 
@@ -285,7 +285,7 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
   - `detect_external_calls(worker_output)` → `ExternalGateEvidence` (boto3/httpx/requests/stripe/twilio import + non-local URL).
   - `detect_security_severity(verdict)` → `SecurityGateEvidence` (duck-typed verdict kabul eder, circular import'tan kaçınır).
   - `detect_budget_breach(tracker, project_id, cap_usd)` → `BudgetGateEvidence` (overage % dahil).
-- **`ortim/hooks/registry.py`** (yeni) — `run_hook("pre_commit"|"pre_deploy", cwd, audit, ...)`. Komut env'leri: `AI_FACTORY_LINT_CMD`, `AI_FACTORY_FORMAT_CHECK_CMD`, `AI_FACTORY_DEPLOY_CMD`. Chain'de ilk fail short-circuit; her hook event'i audit'a `hook_event` olarak düşer (`exit_code`, `duration_seconds`, `stderr_tail`). `AI_FACTORY_HOOKS_ENABLED=false` ile global disable.
+- **`ortim/hooks/registry.py`** (yeni) — `run_hook("pre_commit"|"pre_deploy", cwd, audit, ...)`. Komut env'leri: `ORTIM_LINT_CMD`, `ORTIM_FORMAT_CHECK_CMD`, `ORTIM_DEPLOY_CMD`. Chain'de ilk fail short-circuit; her hook event'i audit'a `hook_event` olarak düşer (`exit_code`, `duration_seconds`, `stderr_tail`). `ORTIM_HOOKS_ENABLED=false` ile global disable.
 - **Pre-commit entegrasyonu** — `runner.py:execute_task` Reviewer chain onayladıktan SONRA `commit_changes` ÖNCESİ `pre_commit` hook'u çağırır. Hook fail ise: branch abandon, last_review_reasons'a `[pre_commit] hook failed (exit X); stderr tail: ...` push, task PENDING (retry budget tüketir → AWAITING_HITL).
 - **CLI:** `ortim gates <project-id>` — açık project gate'leri + advisory schema/budget gate raporu.
 - **Smoke test:** 20 yeni test (`test_gate_detector.py` 13, `test_hooks.py` 7); regression yok, suite 134/134.
@@ -312,7 +312,7 @@ CodeReviewer (soft veto, functional correctness) üstüne 3 yeni reviewer:
 ### Phase 0 — Foundation hardening (2026-05-08, TAMAMLANDI)
 - Reviewer rubric (per-criterion verdict + `unverifiable` two-mode: `criterion_design` vs `test_infrastructure`)
 - Orchestrator Hard Rule 10 — binary acceptance criteria ban-list
-- `.ai-factory.env` test-cmd auto-write from tier+app_class
+- `.ortim.env` test-cmd auto-write from tier+app_class
 
 ### M2 — Conversational Intake (2026-05-13, TAMAMLANDI)
 - Dialog states `INTAKE_DIALOG` / `STACK_DIALOG` / `PRD_DIALOG`
@@ -401,7 +401,7 @@ ortim run-all <project-id> --parallel --max-workers 4
 ```
 
 Paralel mod gereksinimleri:
-- `git` PATH'te olmalı, `AI_FACTORY_GIT_ENABLED=false` set edilmemeli
+- `git` PATH'te olmalı, `ORTIM_GIT_ENABLED=false` set edilmemeli
 - Aynı workspace'te ikinci `run-all` engellenir (workspace exec lock)
 - Worktree'ler `<workspace>/.worktrees/<task_id>/` altında; task DONE → merge sonrası otomatik silinir, REJECTED → cleanup'ta silinir
 - Merge conflict → task `AWAITING_HITL`, `task_status.json`'a `last_error: merge: ...` yazılır

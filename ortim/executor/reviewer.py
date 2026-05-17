@@ -126,7 +126,7 @@ class ReviewVerdict(BaseModel):
                 reason = c.unverifiable_reason or "criterion_design"
                 if reason == "test_infrastructure":
                     tag = "unverifiable:test_infra"
-                    note = "(test runner unavailable — set AI_FACTORY_TEST_CMD)"
+                    note = "(test runner unavailable — set ORTIM_TEST_CMD)"
                 else:
                     tag = "unverifiable:design"
                     note = "(criterion design issue, not Worker fault)"

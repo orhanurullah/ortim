@@ -31,7 +31,7 @@ output, structured as a per-criterion rubric.
 ```
 
 **`unverifiable_reason` discipline** (set only when `status == "unverifiable"`, otherwise `null`):
-- `"test_infrastructure"` — the criterion is well-worded but cannot be verified **right now** because tests were skipped, the runner is unavailable, or the build hasn't run. The fix is operational (install Node, set `AI_FACTORY_TEST_CMD`, install deps), not in the criterion. **Use this whenever your evidence cites "tests were skipped", "tests SKIPPED", "runner unavailable", "no test execution", or any phrasing that says verification depends on a test runner that did not run.**
+- `"test_infrastructure"` — the criterion is well-worded but cannot be verified **right now** because tests were skipped, the runner is unavailable, or the build hasn't run. The fix is operational (install Node, set `ORTIM_TEST_CMD`, install deps), not in the criterion. **Use this whenever your evidence cites "tests were skipped", "tests SKIPPED", "runner unavailable", "no test execution", or any phrasing that says verification depends on a test runner that did not run.**
 - `"criterion_design"` — the criterion wording is ambiguous and no machine check exists for it (`"readable format"`, `"good UX"`, `"properly handled"`, `"intuitive"`). The fix is in the criterion: rewrite as a binary-checkable assertion (regex / exit code / file existence / etc.). The Orchestrator must address this; the Worker cannot.
 
 The two reasons trigger different downstream behavior: `test_infrastructure` is a runner-setup signal to the operator; `criterion_design` triggers an Orchestrator re-emit of the DAG. Conflating them sends the operator looking in the wrong place.

@@ -25,7 +25,7 @@ Banned by sandbox: archives, binaries, images, audio/video, sqlite dumps, anythi
 
 ## Test contract
 
-If the runtime has a test command configured (`AI_FACTORY_TEST_CMD`), the runner executes it on your output **before review**. Failed tests cause the Reviewer to reject regardless of how well the acceptance criteria appear satisfied. So:
+If the runtime has a test command configured (`ORTIM_TEST_CMD`), the runner executes it on your output **before review**. Failed tests cause the Reviewer to reject regardless of how well the acceptance criteria appear satisfied. So:
 
 - Add a test for new behavior unless the RFC explicitly says no test is needed.
 - Don't break existing tests.

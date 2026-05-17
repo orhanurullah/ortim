@@ -6,8 +6,8 @@ Covers the contracts the CLI commands and the agent flow depend on:
   - intent.md / stack.json+md / PRD.md round-trip through save/load
   - LockedStack JSON survives the persistence boundary unchanged
   - count_dialog_turns is monotonic across appends
-  - dialog_mode_on respects AI_FACTORY_DIALOG_MODE (default on)
-  - turn_cap reads AI_FACTORY_DIALOG_TURN_CAP and falls back to 10
+  - dialog_mode_on respects ORTIM_DIALOG_MODE (default on)
+  - turn_cap reads ORTIM_DIALOG_TURN_CAP and falls back to 10
   - non-dialog states cannot record turn history (programmer error)
 """
 

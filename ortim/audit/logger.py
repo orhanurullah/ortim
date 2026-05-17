@@ -8,7 +8,7 @@ This is the source-of-truth for cost reporting, drift detection, and debugging.
 Compliance posture (M1 — Gun 0):
 
   * Strings are PII-redacted before serialization (email, T.C. Kimlik, phone,
-    credit-card, IPv4). Bypass with `AI_FACTORY_AUDIT_RAW=1` for debug only.
+    credit-card, IPv4). Bypass with `ORTIM_AUDIT_RAW=1` for debug only.
   * Each event carries a `prev_hash` field that chains to the previous event,
     enabling tamper-evidence detection via `ortim.audit.verify.verify_chain`.
   * Every event is tagged with a `category` field (architect, worker, …) for

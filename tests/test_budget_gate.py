@@ -7,7 +7,7 @@ Detector + budget math live in `test_gate_detector.py` and
 
   * `_maybe_open_budget_gate` transitions EXECUTING → BUDGET_AWAITING_APPROVAL
     when audit-derived spend reaches the cap, and is a no-op otherwise.
-  * env-var contract: missing / invalid / non-positive `AI_FACTORY_BUDGET_CAP_USD`
+  * env-var contract: missing / invalid / non-positive `ORTIM_BUDGET_CAP_USD`
     disables the gate entirely.
   * Audit event `gate_budget_opened` carries spend + cap + overage.
   * State machine round-trip via the `budget_approved` alias works.
@@ -73,14 +73,18 @@ def _setup(tmp: Path, cap_usd: float | None) -> tuple[Project, AuditLogger]:
     audit_path.touch()
     audit = AuditLogger(path=audit_path)
     os.environ["AUDIT_LOG_PATH"] = str(audit_path)
+    # Clear legacy name too so the env_get shim does not pick it up
+    # from the operator's shell/.env when the test wants "unset".
+    os.environ.pop("AI_FACTORY_BUDGET_CAP_USD", None)
     if cap_usd is not None:
-        os.environ["AI_FACTORY_BUDGET_CAP_USD"] = str(cap_usd)
+        os.environ["ORTIM_BUDGET_CAP_USD"] = str(cap_usd)
     else:
-        os.environ.pop("AI_FACTORY_BUDGET_CAP_USD", None)
+        os.environ.pop("ORTIM_BUDGET_CAP_USD", None)
     return project, audit
 
 
 def _teardown_env() -> None:
+    os.environ.pop("ORTIM_BUDGET_CAP_USD", None)
     os.environ.pop("AI_FACTORY_BUDGET_CAP_USD", None)
     os.environ.pop("AUDIT_LOG_PATH", None)
 
@@ -109,7 +113,7 @@ def test_gate_no_op_when_cap_invalid() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         project, audit = _setup(Path(tmp), cap_usd=None)
-        os.environ["AI_FACTORY_BUDGET_CAP_USD"] = "not-a-number"
+        os.environ["ORTIM_BUDGET_CAP_USD"] = "not-a-number"
         try:
             gated, _, cap = _maybe_open_budget_gate(project, audit)
             assert gated is False

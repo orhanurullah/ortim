@@ -61,7 +61,7 @@ def test_logger_writes_redacted_strings() -> None:
 
 
 def test_bypass_env_leaves_marker() -> None:
-    os.environ["AI_FACTORY_AUDIT_RAW"] = "1"
+    os.environ["ORTIM_AUDIT_RAW"] = "1"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "audit.jsonl"
@@ -71,7 +71,7 @@ def test_bypass_env_leaves_marker() -> None:
             assert rec["redaction_bypassed"] is True
             assert rec["brief"] == "contact me at a@b.com"  # raw passthrough
     finally:
-        del os.environ["AI_FACTORY_AUDIT_RAW"]
+        del os.environ["ORTIM_AUDIT_RAW"]
 
 
 if __name__ == "__main__":

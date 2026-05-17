@@ -19,8 +19,8 @@ workspaces/*/
 !workspaces/.gitkeep
 
 # Audit logs
-runtime/audit/*.log
-runtime/audit/*.jsonl
+ortim/audit/*.log
+ortim/audit/*.jsonl
 
 # IDE
 .vscode/

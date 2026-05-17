@@ -21,7 +21,7 @@ Local-provider quirks:
 
 Transient error handling: `call()` retries up to `MAX_RETRIES` times
 on 503/529/connection/timeout errors with exponential backoff + jitter.
-Override via `AI_FACTORY_LLM_MAX_RETRIES` env (default 3). Both
+Override via `ORTIM_LLM_MAX_RETRIES` env (default 3). Both
 `api_kind`s share the same retry loop.
 """
 
@@ -36,10 +36,11 @@ from dataclasses import dataclass
 import httpx
 from anthropic import APIConnectionError, APIStatusError, Anthropic
 
+from ortim.env import env_get
 from ortim.llm.providers import ProviderConfig, resolve_provider
 
 # Retry budget. 3 retries = 4 total attempts with ~1s/2s/4s base delay.
-MAX_RETRIES = int(os.getenv("AI_FACTORY_LLM_MAX_RETRIES", "3"))
+MAX_RETRIES = int(env_get("ORTIM_LLM_MAX_RETRIES", "3") or "3")
 
 # HTTP status codes that are safe (and advisable) to retry.
 _RETRYABLE_STATUS_CODES = frozenset({429, 503, 529})

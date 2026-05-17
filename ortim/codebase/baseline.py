@@ -32,12 +32,13 @@ not determine" and the regression check is disabled (with a warning).
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from ortim.env import env_get
 
 
 @dataclass(frozen=True)
@@ -250,9 +251,9 @@ def check_regression(
       * baseline is None (greenfield project)
       * baseline could not be parsed at capture time (parseable=False)
       * current output cannot be parsed (parser miss)
-      * `AI_FACTORY_BASELINE_DISABLED=1` is set
+      * `ORTIM_BASELINE_DISABLED=1` is set
     """
-    if os.getenv("AI_FACTORY_BASELINE_DISABLED") == "1":
+    if env_get("ORTIM_BASELINE_DISABLED") == "1":
         return RegressionReport(False, -1, -1, "baseline check disabled by env")
     if baseline is None or not baseline.parseable:
         return RegressionReport(False, -1, -1, "no parseable baseline")

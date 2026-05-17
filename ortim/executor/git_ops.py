@@ -8,17 +8,18 @@ the branch is deleted. On rejection the branch is abandoned (`branch -D`)
 which discards the Worker's writes without touching main.
 
 Best-effort by default: if `git` is not on PATH, ops are skipped and the
-runner proceeds without isolation. Set `AI_FACTORY_GIT_ENABLED=true` to
+runner proceeds without isolation. Set `ORTIM_GIT_ENABLED=true` to
 require git (raises `GitNotAvailable` if missing) or `=false` to disable
 even when present.
 """
 
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
+
+from ortim.env import env_get
 
 
 class GitNotAvailable(Exception):
@@ -45,13 +46,13 @@ def git_enabled(workspace: Path) -> bool:
     binary is missing. The `workspace` arg is reserved for future per-project
     overrides via `.ortim.toml`.
     """
-    flag = os.getenv("AI_FACTORY_GIT_ENABLED", "auto").lower()
+    flag = (env_get("ORTIM_GIT_ENABLED", "auto") or "auto").lower()
     if flag == "false":
         return False
     if flag in ("true", "1", "yes"):
         if not git_available():
             raise GitNotAvailable(
-                "AI_FACTORY_GIT_ENABLED=true but `git` is not on PATH"
+                "ORTIM_GIT_ENABLED=true but `git` is not on PATH"
             )
         return True
     return git_available()

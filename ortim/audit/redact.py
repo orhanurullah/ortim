@@ -13,7 +13,7 @@ false negatives are not.
 
 Bypass for debug only:
 
-    AI_FACTORY_AUDIT_RAW=1     # disables redaction; never set in prod
+    ORTIM_AUDIT_RAW=1          # disables redaction; never set in prod
 
 Bypass leaves a `redaction_bypassed: true` marker on every event so that
 auditors can still tell post-hoc that the log was written without redaction.
@@ -21,9 +21,10 @@ auditors can still tell post-hoc that the log was written without redaction.
 
 from __future__ import annotations
 
-import os
 import re
 from typing import Any
+
+from ortim.env import env_get
 
 # Email — RFC 5322 lite, intentionally generous
 _RE_EMAIL = re.compile(
@@ -93,5 +94,5 @@ def redact_value(value: Any) -> Any:
 
 
 def redaction_enabled() -> bool:
-    """False iff the operator explicitly opted out via `AI_FACTORY_AUDIT_RAW=1`."""
-    return os.getenv("AI_FACTORY_AUDIT_RAW", "").strip() not in ("1", "true", "yes")
+    """False iff the operator explicitly opted out via `ORTIM_AUDIT_RAW=1`."""
+    return (env_get("ORTIM_AUDIT_RAW", "") or "").strip() not in ("1", "true", "yes")

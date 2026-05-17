@@ -12,9 +12,9 @@ contract is intentionally narrow:
 
 Initial hooks (Faz 6c):
   - `pre_commit` — runs after Reviewer chain approves but before `git commit`.
-                   Wires `AI_FACTORY_LINT_CMD` and `AI_FACTORY_FORMAT_CHECK_CMD`.
+                   Wires `ORTIM_LINT_CMD` and `ORTIM_FORMAT_CHECK_CMD`.
   - `pre_deploy` — runs when entering DEPLOY_AWAITING_APPROVAL → DONE.
-                   Wires `AI_FACTORY_DEPLOY_CMD`.
+                   Wires `ORTIM_DEPLOY_CMD`.
 
 Hooks are best-effort: if no env command is set, the hook is a no-op (and
 audited as such). This keeps current setups working without ceremony.
@@ -22,12 +22,12 @@ audited as such). This keeps current setups working without ceremony.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from ortim.audit import AuditLogger
+from ortim.env import env_get
 
 
 @dataclass(frozen=True)
@@ -51,8 +51,8 @@ class HookResult:
 # any failure halts the rest. Order matters for pre_commit (lint before
 # format check, by convention).
 HOOK_COMMANDS: dict[str, tuple[str, ...]] = {
-    "pre_commit": ("AI_FACTORY_LINT_CMD", "AI_FACTORY_FORMAT_CHECK_CMD"),
-    "pre_deploy": ("AI_FACTORY_DEPLOY_CMD",),
+    "pre_commit": ("ORTIM_LINT_CMD", "ORTIM_FORMAT_CHECK_CMD"),
+    "pre_deploy": ("ORTIM_DEPLOY_CMD",),
 }
 
 
@@ -68,7 +68,7 @@ def run_hook(
     if name not in HOOK_COMMANDS:
         raise ValueError(f"unknown hook: {name}; valid: {list(HOOK_COMMANDS)}")
 
-    if os.getenv("AI_FACTORY_HOOKS_ENABLED", "true").lower() == "false":
+    if (env_get("ORTIM_HOOKS_ENABLED", "true") or "true").lower() == "false":
         result = HookResult(
             name=name, skipped=True, skipped_reason="hooks disabled via env"
         )
@@ -77,7 +77,7 @@ def run_hook(
 
     cmds: list[tuple[str, str]] = []
     for env_name in HOOK_COMMANDS[name]:
-        cmd = os.getenv(env_name, "").strip()
+        cmd = (env_get(env_name, "") or "").strip()
         if cmd:
             cmds.append((env_name, cmd))
 

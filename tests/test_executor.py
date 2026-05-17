@@ -431,23 +431,23 @@ def test_git_available_matches_path() -> None:
 
 
 def test_git_enabled_false_when_explicit_off() -> None:
-    prev = os.environ.get("AI_FACTORY_GIT_ENABLED")
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    prev = os.environ.get("ORTIM_GIT_ENABLED")
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             assert git_ops.git_enabled(Path(tmp)) is False
     finally:
         if prev is None:
-            os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+            os.environ.pop("ORTIM_GIT_ENABLED", None)
         else:
-            os.environ["AI_FACTORY_GIT_ENABLED"] = prev
+            os.environ["ORTIM_GIT_ENABLED"] = prev
 
 
 def test_git_enabled_required_raises_when_missing() -> None:
     if GIT_ON_PATH:
         return  # can't simulate missing git
-    prev = os.environ.get("AI_FACTORY_GIT_ENABLED")
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "true"
+    prev = os.environ.get("ORTIM_GIT_ENABLED")
+    os.environ["ORTIM_GIT_ENABLED"] = "true"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             try:
@@ -457,9 +457,9 @@ def test_git_enabled_required_raises_when_missing() -> None:
             raise AssertionError("Expected GitNotAvailable when git missing and required")
     finally:
         if prev is None:
-            os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+            os.environ.pop("ORTIM_GIT_ENABLED", None)
         else:
-            os.environ["AI_FACTORY_GIT_ENABLED"] = prev
+            os.environ["ORTIM_GIT_ENABLED"] = prev
 
 
 def test_git_full_branch_lifecycle() -> None:
@@ -616,7 +616,7 @@ def test_concurrent_file_lock_serializes_threads() -> None:
 
 
 def test_test_runner_skipped_when_unconfigured() -> None:
-    prev = os.environ.pop("AI_FACTORY_TEST_CMD", None)
+    prev = os.environ.pop("ORTIM_TEST_CMD", None)
     try:
         with tempfile.TemporaryDirectory() as tmp:
             result = test_runner.run_tests(Path(tmp))
@@ -625,14 +625,14 @@ def test_test_runner_skipped_when_unconfigured() -> None:
             assert "no test command" in result.skipped_reason.lower()
     finally:
         if prev is not None:
-            os.environ["AI_FACTORY_TEST_CMD"] = prev
+            os.environ["ORTIM_TEST_CMD"] = prev
 
 
 def test_test_runner_disabled_via_env() -> None:
-    prev_disable = os.environ.get("AI_FACTORY_TESTS_ENABLED")
-    prev_cmd = os.environ.get("AI_FACTORY_TEST_CMD")
-    os.environ["AI_FACTORY_TESTS_ENABLED"] = "false"
-    os.environ["AI_FACTORY_TEST_CMD"] = "pytest"
+    prev_disable = os.environ.get("ORTIM_TESTS_ENABLED")
+    prev_cmd = os.environ.get("ORTIM_TEST_CMD")
+    os.environ["ORTIM_TESTS_ENABLED"] = "false"
+    os.environ["ORTIM_TEST_CMD"] = "pytest"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             result = test_runner.run_tests(Path(tmp))
@@ -640,19 +640,19 @@ def test_test_runner_disabled_via_env() -> None:
             assert "disabled" in result.skipped_reason.lower()
     finally:
         if prev_disable is None:
-            os.environ.pop("AI_FACTORY_TESTS_ENABLED", None)
+            os.environ.pop("ORTIM_TESTS_ENABLED", None)
         else:
-            os.environ["AI_FACTORY_TESTS_ENABLED"] = prev_disable
+            os.environ["ORTIM_TESTS_ENABLED"] = prev_disable
         if prev_cmd is None:
-            os.environ.pop("AI_FACTORY_TEST_CMD", None)
+            os.environ.pop("ORTIM_TEST_CMD", None)
         else:
-            os.environ["AI_FACTORY_TEST_CMD"] = prev_cmd
+            os.environ["ORTIM_TEST_CMD"] = prev_cmd
 
 
 def test_test_runner_runs_configured_command() -> None:
     """Use a portable always-pass command. `python -c "pass"` works on all platforms."""
-    prev = os.environ.get("AI_FACTORY_TEST_CMD")
-    os.environ["AI_FACTORY_TEST_CMD"] = f'"{sys.executable}" -c pass'
+    prev = os.environ.get("ORTIM_TEST_CMD")
+    os.environ["ORTIM_TEST_CMD"] = f'"{sys.executable}" -c pass'
     try:
         with tempfile.TemporaryDirectory() as tmp:
             result = test_runner.run_tests(Path(tmp), timeout=10.0)
@@ -661,14 +661,14 @@ def test_test_runner_runs_configured_command() -> None:
             assert result.passed is True
     finally:
         if prev is None:
-            os.environ.pop("AI_FACTORY_TEST_CMD", None)
+            os.environ.pop("ORTIM_TEST_CMD", None)
         else:
-            os.environ["AI_FACTORY_TEST_CMD"] = prev
+            os.environ["ORTIM_TEST_CMD"] = prev
 
 
 def test_test_runner_reports_failure_exit_code() -> None:
-    prev = os.environ.get("AI_FACTORY_TEST_CMD")
-    os.environ["AI_FACTORY_TEST_CMD"] = (
+    prev = os.environ.get("ORTIM_TEST_CMD")
+    os.environ["ORTIM_TEST_CMD"] = (
         f'"{sys.executable}" -c "import sys; sys.exit(2)"'
     )
     try:
@@ -679,9 +679,9 @@ def test_test_runner_reports_failure_exit_code() -> None:
             assert result.passed is False
     finally:
         if prev is None:
-            os.environ.pop("AI_FACTORY_TEST_CMD", None)
+            os.environ.pop("ORTIM_TEST_CMD", None)
         else:
-            os.environ["AI_FACTORY_TEST_CMD"] = prev
+            os.environ["ORTIM_TEST_CMD"] = prev
 
 
 if __name__ == "__main__":

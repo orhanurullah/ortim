@@ -105,10 +105,10 @@ def test_bootstrap_uses_locked_stack_test_cmd_over_matrix() -> None:
         project_name="testproj",
         locked_stack=_go_stack(),
     )
-    env_path = ws / ".ai-factory.env"
-    assert env_path.exists(), ".ai-factory.env should be written"
+    env_path = ws / ".ortim.env"
+    assert env_path.exists(), ".ortim.env should be written"
     body = env_path.read_text(encoding="utf-8")
-    assert 'AI_FACTORY_TEST_CMD="go test ./..."' in body, body
+    assert 'ORTIM_TEST_CMD="go test ./..."' in body, body
     assert "vitest" not in body, "matrix value must be overridden"
 
 
@@ -124,7 +124,7 @@ def test_bootstrap_falls_back_to_matrix_when_no_locked_stack() -> None:
         project_name="legacyproj",
         locked_stack=None,
     )
-    env_path = ws / ".ai-factory.env"
+    env_path = ws / ".ortim.env"
     assert env_path.exists()
     body = env_path.read_text(encoding="utf-8")
     assert "vitest" in body, "matrix value must surface when no LockedStack"
@@ -143,9 +143,9 @@ def test_bootstrap_locked_stack_test_cmd_works_for_mobile() -> None:
         project_name="todoflutter",
         locked_stack=_flutter_stack(),
     )
-    env_path = ws / ".ai-factory.env"
+    env_path = ws / ".ortim.env"
     body = env_path.read_text(encoding="utf-8")
-    assert 'AI_FACTORY_TEST_CMD="flutter test"' in body
+    assert 'ORTIM_TEST_CMD="flutter test"' in body
 
 
 # ---- Architect Call 2 × LockedStack ----

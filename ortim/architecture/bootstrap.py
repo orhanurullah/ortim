@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 # `.gitkeep` so the directory survives in git, plus a baseline `.gitignore`.
 _UNIVERSAL_GITIGNORE = """\
 .env
+.ortim.env
 .ai-factory.env
 *.log
 .DS_Store
@@ -480,11 +481,11 @@ def _t2_web_env_example() -> str:
 
 
 # (tier, app_class) → suggested test command. None means "no default; user
-# must set AI_FACTORY_TEST_CMD explicitly". Phase 0 (9c): bootstrap writes
-# this into `.ai-factory.env` so the test runner has a fallback when the
-# user hasn't exported the env var. Reviewer rubric (9a) marks
-# test-dependent criteria as `unverifiable` whenever the runner is skipped,
-# so leaving this empty is a real cost — the task escalates to HITL.
+# must set ORTIM_TEST_CMD explicitly". Phase 0 (9c): bootstrap writes
+# this into `.ortim.env` so the test runner has a fallback when the user
+# hasn't exported the env var. Reviewer rubric (9a) marks test-dependent
+# criteria as `unverifiable` whenever the runner is skipped, so leaving
+# this empty is a real cost — the task escalates to HITL.
 _TEST_CMD_BY_TIER_APP: dict[tuple[str, str], str] = {
     ("T1", "web"): "npx vitest run",
     ("T2", "web"): "npx vitest run",
@@ -528,7 +529,7 @@ def _token_matches(token: str, text: str) -> bool:
     natural-language collisions: `rust` matches inside `trust`, `dart`
     inside `regard`/`depart`. Real example surfaced by T0/web Python
     proof-point — RFC said "internal calls trust types", and the
-    bootstrap wrote `AI_FACTORY_TEST_CMD="cargo test"` instead of
+    bootstrap wrote `ORTIM_TEST_CMD="cargo test"` instead of
     `pytest`. Fix: regex `\b` boundary, preserving the existing
     trailing-space convention (`"go "`) for backward compat.
     """
@@ -549,7 +550,7 @@ def _infer_test_cmd_from_rfc(workspace: Path) -> str | None:
     detection instead and don't hit this fallback.
 
     Returns `None` when the file is missing or no language token matches —
-    callers leave `.ai-factory.env` unwritten and the test runner skips,
+    callers leave `.ortim.env` unwritten and the test runner skips,
     which item 9c rubric correctly escalates as `unverifiable`.
     """
     rfc_path = workspace / "RFC.md"
@@ -731,14 +732,14 @@ def bootstrap_workspace_layout(
             )
             created.append(gomod)
 
-    # `.ai-factory.env`: workspace-scoped fallback for AI_FACTORY_TEST_CMD,
-    # so the test runner has a runner to invoke even when the user hasn't
-    # exported the env var. Without this, tier ≥ T1 tasks with test-shaped
-    # criteria all return `unverifiable` and escalate to HITL.
+    # `.ortim.env`: workspace-scoped fallback for ORTIM_TEST_CMD, so the
+    # test runner has a runner to invoke even when the user hasn't exported
+    # the env var. Without this, tier ≥ T1 tasks with test-shaped criteria
+    # all return `unverifiable` and escalate to HITL.
     #
     # M2 dialog path: `locked_stack.test_cmd` is the single source of
     # truth — heuristics only run when no locked stack exists (legacy
-    # AI_FACTORY_DIALOG_MODE=off + brownfield-no-stack flows).
+    # ORTIM_DIALOG_MODE=off + brownfield-no-stack flows).
     if locked_stack is not None and locked_stack.test_cmd:
         test_cmd: str | None = locked_stack.test_cmd
     else:
@@ -750,13 +751,16 @@ def bootstrap_workspace_layout(
         if test_cmd is None:
             test_cmd = _infer_test_cmd_from_rfc(workspace)
     if test_cmd is not None:
-        ai_env = workspace / ".ai-factory.env"
-        if not ai_env.exists():
-            ai_env.write_text(
+        # Prefer `.ortim.env`; do not overwrite a legacy `.ai-factory.env`
+        # the user already has (test_runner reads either).
+        ortim_env = workspace / ".ortim.env"
+        legacy_env = workspace / ".ai-factory.env"
+        if not ortim_env.exists() and not legacy_env.exists():
+            ortim_env.write_text(
                 "# Auto-written by bootstrap. Override via real env vars at runtime.\n"
-                f'AI_FACTORY_TEST_CMD="{test_cmd}"\n',
+                f'ORTIM_TEST_CMD="{test_cmd}"\n',
                 encoding="utf-8",
             )
-            created.append(ai_env)
+            created.append(ortim_env)
 
     return created

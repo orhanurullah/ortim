@@ -98,10 +98,10 @@ def test_t2_web_writes_ai_factory_env_with_vitest_cmd(tmp_path: Path) -> None:
     bootstrap_workspace_layout(
         tmp_path, modules=["cli"], tier="T2", app_class="web", project_name="todo"
     )
-    ai_env = tmp_path / ".ai-factory.env"
+    ai_env = tmp_path / ".ortim.env"
     assert ai_env.exists()
     body = ai_env.read_text(encoding="utf-8")
-    assert "AI_FACTORY_TEST_CMD" in body
+    assert "ORTIM_TEST_CMD" in body
     assert "vitest" in body
 
 
@@ -109,7 +109,7 @@ def test_unknown_tier_app_class_skips_ai_factory_env(tmp_path: Path) -> None:
     bootstrap_workspace_layout(
         tmp_path, modules=["lib"], tier="T0", app_class="mobile", project_name="todo"
     )
-    assert not (tmp_path / ".ai-factory.env").exists()
+    assert not (tmp_path / ".ortim.env").exists()
 
 
 def test_universal_gitignore_includes_ai_factory_env(tmp_path: Path) -> None:
@@ -117,7 +117,7 @@ def test_universal_gitignore_includes_ai_factory_env(tmp_path: Path) -> None:
         tmp_path, modules=["cli"], tier="T0", app_class="mobile", project_name="todo"
     )
     body = (tmp_path / ".gitignore").read_text(encoding="utf-8")
-    assert ".ai-factory.env" in body
+    assert ".ortim.env" in body
 
 
 # ---------- Item 18 genişlemesi: stack-aware test cmd fallback ----------
@@ -134,7 +134,7 @@ def test_t0_web_falls_back_to_rfc_language_for_test_cmd_go(tmp_path: Path) -> No
     bootstrap_workspace_layout(
         tmp_path, modules=["cmd"], tier="T0", app_class="web", project_name="todo"
     )
-    ai_env = tmp_path / ".ai-factory.env"
+    ai_env = tmp_path / ".ortim.env"
     assert ai_env.exists()
     body = ai_env.read_text(encoding="utf-8")
     assert "go test" in body, body
@@ -151,7 +151,7 @@ def test_t0_web_falls_back_to_rfc_language_for_test_cmd_typescript(
     bootstrap_workspace_layout(
         tmp_path, modules=["cmd"], tier="T0", app_class="web", project_name="todo"
     )
-    body = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    body = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
     assert "vitest" in body, body
 
 
@@ -162,7 +162,7 @@ def test_t0_web_no_rfc_no_test_cmd_written(tmp_path: Path) -> None:
     bootstrap_workspace_layout(
         tmp_path, modules=["cmd"], tier="T0", app_class="web", project_name="todo"
     )
-    assert not (tmp_path / ".ai-factory.env").exists()
+    assert not (tmp_path / ".ortim.env").exists()
 
 
 def test_matrix_entry_wins_over_rfc_fallback(tmp_path: Path) -> None:
@@ -174,7 +174,7 @@ def test_matrix_entry_wins_over_rfc_fallback(tmp_path: Path) -> None:
     bootstrap_workspace_layout(
         tmp_path, modules=["cli"], tier="T2", app_class="web", project_name="todo"
     )
-    body = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    body = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
     assert "vitest" in body, "T2/web matrix entry must beat RFC's Go signal"
     assert "go test" not in body
 
@@ -784,7 +784,7 @@ def test_t0_web_rfc_scan_fallback_resolves_python(tmp_path: Path) -> None:
 
 
 def test_t0_web_python_writes_ai_factory_env_with_pytest(tmp_path: Path) -> None:
-    """LockedStack.test_cmd is the source of truth for `.ai-factory.env`.
+    """LockedStack.test_cmd is the source of truth for `.ortim.env`.
     For a T0 Python stack the locked test_cmd is `pytest`."""
     bootstrap_workspace_layout(
         tmp_path,
@@ -794,15 +794,15 @@ def test_t0_web_python_writes_ai_factory_env_with_pytest(tmp_path: Path) -> None
         project_name="todo-cli",
         locked_stack=_t0_python_stack(),
     )
-    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
-    assert 'AI_FACTORY_TEST_CMD="pytest"' in ai_env
+    ai_env = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
+    assert 'ORTIM_TEST_CMD="pytest"' in ai_env
 
 
 def test_rfc_scan_does_not_match_rust_inside_trust(tmp_path: Path) -> None:
     """Regression — surfaced by the C-4 T0/web Python proof-point.
     RFC contained the phrase "internal calls trust types", and the
     `_infer_test_cmd_from_rfc` substring match latched onto `rust`
-    inside `trust`, writing `AI_FACTORY_TEST_CMD="cargo test"` to a
+    inside `trust`, writing `ORTIM_TEST_CMD="cargo test"` to a
     Python project. Word-boundary regex prevents this class entirely."""
     (tmp_path / "RFC.md").write_text(
         "## 4. Tech Stack\n\n"
@@ -818,7 +818,7 @@ def test_rfc_scan_does_not_match_rust_inside_trust(tmp_path: Path) -> None:
         project_name="x",
         locked_stack=None,
     )
-    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    ai_env = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
     assert "cargo test" not in ai_env, (
         "RFC scan should not match 'rust' inside 'trust' (regression)"
     )
@@ -842,7 +842,7 @@ def test_rfc_scan_does_not_match_dart_inside_other_words(tmp_path: Path) -> None
         project_name="x",
         locked_stack=None,
     )
-    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    ai_env = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
     assert "flutter test" not in ai_env
     assert "pytest" in ai_env
 
@@ -865,7 +865,7 @@ def test_rfc_scan_still_matches_real_language_tokens(tmp_path: Path) -> None:
         project_name="x",
         locked_stack=None,
     )
-    ai_env = (tmp_path / ".ai-factory.env").read_text(encoding="utf-8")
+    ai_env = (tmp_path / ".ortim.env").read_text(encoding="utf-8")
     assert "cargo test" in ai_env
 
 

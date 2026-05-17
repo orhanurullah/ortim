@@ -98,7 +98,7 @@ def test_demo_creates_project_workspace_before_running_subprocesses(
 
 
 def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Demo sets `AI_FACTORY_DIALOG_MODE=off` for its own run; if the
+    """Demo sets `ORTIM_DIALOG_MODE=off` for its own run; if the
     operator had set it to `on` before, the original value must be
     restored on exit. Otherwise running `demo` inside an interactive
     shell would silently disable dialog mode for every subsequent
@@ -108,7 +108,7 @@ def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> N
         monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.setenv("AI_FACTORY_DIALOG_MODE", "on")
+        monkeypatch.setenv("ORTIM_DIALOG_MODE", "on")
 
         class _Result:
             returncode = 1
@@ -121,4 +121,4 @@ def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> N
 
         # finally-block restored the marker rather than leaving it at
         # 'off' (which the demo had set internally).
-        assert os.environ.get("AI_FACTORY_DIALOG_MODE") == "on"
+        assert os.environ.get("ORTIM_DIALOG_MODE") == "on"

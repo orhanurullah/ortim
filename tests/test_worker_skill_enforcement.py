@@ -284,7 +284,7 @@ def test_runner_retry_feeds_skill_tagged_prior_reasons() -> None:
     memory = MemoryLoader(REPO_ROOT)
     llm = FakeLLM(canned)
 
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         attempt_1 = execute_task(
             task=_task(),
@@ -324,4 +324,4 @@ def test_runner_retry_feeds_skill_tagged_prior_reasons() -> None:
         )
         assert attempt_2.status == TaskStatus.DONE
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)

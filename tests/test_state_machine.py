@@ -176,7 +176,7 @@ def test_m2_dialog_skip_to_approval_is_blocked() -> None:
 
 
 def test_legacy_babel_to_prd_drafting_still_valid() -> None:
-    """AI_FACTORY_DIALOG_MODE=off path: BABEL_PROCESSING can still go
+    """ORTIM_DIALOG_MODE=off path: BABEL_PROCESSING can still go
     directly to PRD_DRAFTING, so the legacy fixture/test stays green."""
     validate_transition(ProjectState.BABEL_PROCESSING, ProjectState.PRD_DRAFTING)
 

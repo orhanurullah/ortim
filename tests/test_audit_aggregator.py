@@ -409,13 +409,13 @@ def test_logger_timestamp_survives_redaction() -> None:
     metrics break silently on every log written with redaction on."""
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "audit.jsonl"
-        prev_raw = os.environ.pop("AI_FACTORY_AUDIT_RAW", None)
+        prev_raw = os.environ.pop("ORTIM_AUDIT_RAW", None)
         try:
             logger = AuditLogger(path=path)
             logger.log("worker_output_ok", project_id="P1", task_id="T-001")
         finally:
             if prev_raw is not None:
-                os.environ["AI_FACTORY_AUDIT_RAW"] = prev_raw
+                os.environ["ORTIM_AUDIT_RAW"] = prev_raw
 
         line = path.read_text(encoding="utf-8").splitlines()[0]
         rec = json.loads(line)

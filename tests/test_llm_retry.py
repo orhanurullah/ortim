@@ -117,7 +117,7 @@ def test_unverifiable_reason_test_infrastructure():
     assert len(v.unverifiable_by_infra) == 1
     reasons = v.reasons
     assert any("unverifiable:test_infra" in r for r in reasons)
-    assert any("AI_FACTORY_TEST_CMD" in r for r in reasons)
+    assert any("ORTIM_TEST_CMD" in r for r in reasons)
 
 
 def test_unverifiable_backward_compat_none_reason():

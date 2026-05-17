@@ -156,7 +156,7 @@ def test_chain_none_preserves_legacy_behavior() -> None:
     }
     workspace, status_file, audit, memory, llm = _setup(canned)
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         result = execute_task(
             task=_task(),
@@ -171,7 +171,7 @@ def test_chain_none_preserves_legacy_behavior() -> None:
             reviewer_chain=None,
         )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.DONE
     # Exactly two LLM calls when no chain: worker + code reviewer.
@@ -203,7 +203,7 @@ def test_security_hard_veto_immediately_escalates() -> None:
         perf=PerfReviewerAgent(llm, memory, audit),
     )
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         result = execute_task(
             task=_task(), rfc_text="rfc", project_id="P1",
@@ -212,7 +212,7 @@ def test_security_hard_veto_immediately_escalates() -> None:
             max_attempts=3, reviewer_chain=chain,
         )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.AWAITING_HITL, (
         f"hard veto must skip retry; got {result.status}"
@@ -255,7 +255,7 @@ def test_test_hard_veto_after_security_pass() -> None:
         perf=PerfReviewerAgent(llm, memory, audit),
     )
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         result = execute_task(
             task=_task(), rfc_text="rfc", project_id="P1",
@@ -264,7 +264,7 @@ def test_test_hard_veto_after_security_pass() -> None:
             max_attempts=3, reviewer_chain=chain,
         )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.AWAITING_HITL
     assert result.blocked_by == "test"
@@ -295,7 +295,7 @@ def test_perf_only_findings_do_not_block() -> None:
         perf=PerfReviewerAgent(llm, memory, audit),
     )
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         result = execute_task(
             task=_task(), rfc_text="rfc", project_id="P1",
@@ -304,7 +304,7 @@ def test_perf_only_findings_do_not_block() -> None:
             max_attempts=3, reviewer_chain=chain,
         )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.DONE, (
         "Perf is soft-veto only — must not block merge"
@@ -388,7 +388,7 @@ def test_sandbox_violation_populates_prior_reasons_for_next_attempt() -> None:
     }
     workspace, status_file, audit, memory, llm = _setup(canned)
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         result = execute_task(
             task=_task(),
@@ -403,7 +403,7 @@ def test_sandbox_violation_populates_prior_reasons_for_next_attempt() -> None:
             reviewer_chain=None,
         )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.PENDING, (
         "first attempt should land in PENDING with retry budget remaining"
@@ -545,7 +545,7 @@ def test_sandbox_violation_third_attempt_escalates_to_hitl() -> None:
     }
     workspace, status_file, audit, memory, llm = _setup(canned)
     import os
-    os.environ["AI_FACTORY_GIT_ENABLED"] = "false"
+    os.environ["ORTIM_GIT_ENABLED"] = "false"
     try:
         for _ in range(3):
             result = execute_task(
@@ -561,7 +561,7 @@ def test_sandbox_violation_third_attempt_escalates_to_hitl() -> None:
                 reviewer_chain=None,
             )
     finally:
-        os.environ.pop("AI_FACTORY_GIT_ENABLED", None)
+        os.environ.pop("ORTIM_GIT_ENABLED", None)
 
     assert result.status == TaskStatus.AWAITING_HITL
     rec = status_file.records["T-001"]

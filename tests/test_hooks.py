@@ -40,8 +40,8 @@ PY = f'"{sys.executable}"'
 
 
 def test_hook_skipped_when_no_command_configured() -> None:
-    saved = _scrub("AI_FACTORY_LINT_CMD", "AI_FACTORY_FORMAT_CHECK_CMD",
-                   "AI_FACTORY_HOOKS_ENABLED")
+    saved = _scrub("ORTIM_LINT_CMD", "ORTIM_FORMAT_CHECK_CMD",
+                   "ORTIM_HOOKS_ENABLED")
     try:
         with tempfile.TemporaryDirectory() as tmp:
             audit = AuditLogger(path=Path(tmp) / "audit.jsonl")
@@ -54,9 +54,9 @@ def test_hook_skipped_when_no_command_configured() -> None:
 
 
 def test_hook_disabled_via_env() -> None:
-    saved = _scrub("AI_FACTORY_LINT_CMD", "AI_FACTORY_HOOKS_ENABLED")
-    os.environ["AI_FACTORY_LINT_CMD"] = f'{PY} -c "pass"'
-    os.environ["AI_FACTORY_HOOKS_ENABLED"] = "false"
+    saved = _scrub("ORTIM_LINT_CMD", "ORTIM_HOOKS_ENABLED")
+    os.environ["ORTIM_LINT_CMD"] = f'{PY} -c "pass"'
+    os.environ["ORTIM_HOOKS_ENABLED"] = "false"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             audit = AuditLogger(path=Path(tmp) / "audit.jsonl")
@@ -68,9 +68,9 @@ def test_hook_disabled_via_env() -> None:
 
 
 def test_hook_passes_with_zero_exit() -> None:
-    saved = _scrub("AI_FACTORY_LINT_CMD", "AI_FACTORY_FORMAT_CHECK_CMD",
-                   "AI_FACTORY_HOOKS_ENABLED")
-    os.environ["AI_FACTORY_LINT_CMD"] = f'{PY} -c "pass"'
+    saved = _scrub("ORTIM_LINT_CMD", "ORTIM_FORMAT_CHECK_CMD",
+                   "ORTIM_HOOKS_ENABLED")
+    os.environ["ORTIM_LINT_CMD"] = f'{PY} -c "pass"'
     try:
         with tempfile.TemporaryDirectory() as tmp:
             audit = AuditLogger(path=Path(tmp) / "audit.jsonl")
@@ -83,9 +83,9 @@ def test_hook_passes_with_zero_exit() -> None:
 
 
 def test_hook_fails_with_nonzero_exit() -> None:
-    saved = _scrub("AI_FACTORY_LINT_CMD", "AI_FACTORY_FORMAT_CHECK_CMD",
-                   "AI_FACTORY_HOOKS_ENABLED")
-    os.environ["AI_FACTORY_LINT_CMD"] = (
+    saved = _scrub("ORTIM_LINT_CMD", "ORTIM_FORMAT_CHECK_CMD",
+                   "ORTIM_HOOKS_ENABLED")
+    os.environ["ORTIM_LINT_CMD"] = (
         f'{PY} -c "import sys; sys.stderr.write(\'lint err\'); sys.exit(2)"'
     )
     try:
@@ -102,15 +102,15 @@ def test_hook_fails_with_nonzero_exit() -> None:
 
 def test_first_failing_command_short_circuits_chain() -> None:
     """pre_commit runs LINT then FORMAT_CHECK; lint failure must stop format."""
-    saved = _scrub("AI_FACTORY_LINT_CMD", "AI_FACTORY_FORMAT_CHECK_CMD",
-                   "AI_FACTORY_HOOKS_ENABLED")
-    os.environ["AI_FACTORY_LINT_CMD"] = f'{PY} -c "import sys; sys.exit(7)"'
+    saved = _scrub("ORTIM_LINT_CMD", "ORTIM_FORMAT_CHECK_CMD",
+                   "ORTIM_HOOKS_ENABLED")
+    os.environ["ORTIM_LINT_CMD"] = f'{PY} -c "import sys; sys.exit(7)"'
     # If format check ran, it would write a marker; we assert it does NOT.
     marker = None
     try:
         with tempfile.TemporaryDirectory() as tmp:
             marker = Path(tmp) / "format_ran.marker"
-            os.environ["AI_FACTORY_FORMAT_CHECK_CMD"] = (
+            os.environ["ORTIM_FORMAT_CHECK_CMD"] = (
                 f'{PY} -c "open(r\'{marker}\', \'w\').close()"'
             )
             audit = AuditLogger(path=Path(tmp) / "audit.jsonl")
@@ -136,8 +136,8 @@ def test_unknown_hook_name_raises() -> None:
 def test_hook_registry_has_pre_commit_and_pre_deploy() -> None:
     assert "pre_commit" in HOOK_COMMANDS
     assert "pre_deploy" in HOOK_COMMANDS
-    assert "AI_FACTORY_LINT_CMD" in HOOK_COMMANDS["pre_commit"]
-    assert "AI_FACTORY_DEPLOY_CMD" in HOOK_COMMANDS["pre_deploy"]
+    assert "ORTIM_LINT_CMD" in HOOK_COMMANDS["pre_commit"]
+    assert "ORTIM_DEPLOY_CMD" in HOOK_COMMANDS["pre_deploy"]
 
 
 if __name__ == "__main__":

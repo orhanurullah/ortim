@@ -123,9 +123,9 @@ ortim run <id>            # Orchestrator yeniden çağrılır
 Worker test yazdı ama test runner çağrısı exit ≠ 0 (test runner missing veya broken).
 
 ```bash
-# .ai-factory.env içeriği
-cat workspaces/<id>/.ai-factory.env
-# AI_FACTORY_TEST_CMD=npx vitest run
+# .ortim.env içeriği
+cat workspaces/<id>/.ortim.env
+# ORTIM_TEST_CMD=npx vitest run
 ```
 
 Test komutu doğru mu, ilgili package install edildi mi?
@@ -143,7 +143,7 @@ Komut OK ise:
 ortim execute <id> T-005 --reset
 ```
 
-`AI_FACTORY_TEST_CMD` yanlışsa `.ai-factory.env` dosyasını elle düzelt + reset.
+`ORTIM_TEST_CMD` yanlışsa `.ortim.env` dosyasını elle düzelt + reset.
 
 ### 2.4 `security_veto`
 
@@ -201,7 +201,7 @@ ortim advance <id> budget_approved --note "approved overage for T-005-T-008"
 
 ```bash
 # .env dosyasında
-AI_FACTORY_BUDGET_CAP_USD=5.00
+ORTIM_BUDGET_CAP_USD=5.00
 # yeni terminal aç (env reload)
 ortim advance <id> budget_approved
 ```

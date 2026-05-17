@@ -29,6 +29,7 @@ for _stream in (sys.stdout, sys.stderr):
         except (OSError, ValueError):
             pass
 
+from ortim.env import env_get
 from ortim.orchestrator import (
     InvalidTransition,
     Project,
@@ -473,7 +474,7 @@ def gates(project_id: str) -> None:
             )
 
     # G7 — budget cap (audit-derived)
-    cap = os.getenv("AI_FACTORY_BUDGET_CAP_USD")
+    cap = env_get("ORTIM_BUDGET_CAP_USD")
     if cap:
         try:
             cap_f = float(cap)
@@ -563,9 +564,9 @@ def run(
         tr_summary = babel.round_trip(intent, project.id)
         console.print(f"\n[bold]Anladığım:[/bold]\n{tr_summary}\n")
 
-        # M2: route through INTAKE_DIALOG when AI_FACTORY_DIALOG_MODE=on
+        # M2: route through INTAKE_DIALOG when ORTIM_DIALOG_MODE=on
         # (default). Legacy direct-to-PRD_DRAFTING path is preserved for
-        # AI_FACTORY_DIALOG_MODE=off + older fixtures.
+        # ORTIM_DIALOG_MODE=off + older fixtures.
         from ortim.dialog import (
             append_dialog_turn,
             dialog_mode_on,
@@ -2381,7 +2382,7 @@ def tasks(project_id: str) -> None:
 def _build_reviewer_chain(memory, audit):
     """Construct optional Security/Test/Perf reviewers based on env.
 
-    `AI_FACTORY_HARD_REVIEWERS=on` enables all three; off (default) returns None.
+    `ORTIM_HARD_REVIEWERS=on` enables all three; off (default) returns None.
     A missing API key for a specific reviewer's provider degrades that reviewer
     to None with a warning rather than crashing the whole run — operators can
     opt into a partial chain (e.g., security only) by leaving other API keys
@@ -2395,7 +2396,7 @@ def _build_reviewer_chain(memory, audit):
     )
     from ortim.llm import client_for
 
-    flag = os.getenv("AI_FACTORY_HARD_REVIEWERS", "off").strip().lower()
+    flag = (env_get("ORTIM_HARD_REVIEWERS", "off") or "off").strip().lower()
     if flag not in ("on", "true", "1", "yes"):
         return None
 
@@ -2414,7 +2415,7 @@ def _build_reviewer_chain(memory, audit):
     )
     if chain.security is None and chain.test is None and chain.perf is None:
         console.print(
-            "[yellow]AI_FACTORY_HARD_REVIEWERS=on but no reviewer could be built;"
+            "[yellow]ORTIM_HARD_REVIEWERS=on but no reviewer could be built;"
             " falling back to CodeReviewer-only.[/yellow]"
         )
         return None
@@ -2428,7 +2429,7 @@ def _load_for_execute(project_id: str):
     reviewer_chain, memory, audit, rfc_text) or raises typer.Exit on any
     precondition failure. Worker and Reviewer get separate clients so they
     can sit on different providers/models per the Faz 6a routing contract.
-    Hard-veto reviewers are wired only when `AI_FACTORY_HARD_REVIEWERS=on`.
+    Hard-veto reviewers are wired only when `ORTIM_HARD_REVIEWERS=on`.
     """
     from ortim.audit import AuditLogger
     from ortim.executor import TaskStatusFile
@@ -2657,7 +2658,7 @@ def _maybe_open_schema_gate(project, dag, audit) -> tuple[bool, list[str]]:
 
 
 def _maybe_open_budget_gate(project, audit) -> tuple[bool, float, float]:
-    """G7 — when accumulated spend reaches `AI_FACTORY_BUDGET_CAP_USD`
+    """G7 — when accumulated spend reaches `ORTIM_BUDGET_CAP_USD`
     and the project is still EXECUTING, transition to
     BUDGET_AWAITING_APPROVAL. Returns `(gated, spent_usd, cap_usd)`.
 
@@ -2668,10 +2669,10 @@ def _maybe_open_budget_gate(project, audit) -> tuple[bool, float, float]:
     the overage or pause.
 
     No-ops when:
-      * `AI_FACTORY_BUDGET_CAP_USD` is unset or non-positive
+      * `ORTIM_BUDGET_CAP_USD` is unset or non-positive
       * project state is not EXECUTING (already gated or finalized)
     """
-    cap_raw = os.getenv("AI_FACTORY_BUDGET_CAP_USD")
+    cap_raw = env_get("ORTIM_BUDGET_CAP_USD")
     if not cap_raw:
         return False, 0.0, 0.0
     try:
@@ -2727,7 +2728,7 @@ def _print_budget_gate_message(spent: float, cap: float) -> None:
     )
     console.print(
         "[dim]Note: the cap is per-invocation. To raise it for future "
-        "runs, set AI_FACTORY_BUDGET_CAP_USD to a higher value or unset "
+        "runs, set ORTIM_BUDGET_CAP_USD to a higher value or unset "
         "it entirely.[/dim]"
     )
 
@@ -2786,7 +2787,7 @@ def execute(
     """Tek bir task'i Worker -> tests -> Reviewer pipeline'indan gecir.
 
     v0.5b: gercek kod + git branch (auto-on if `git` available) +
-    AI_FACTORY_TEST_CMD set ise test runner.
+    ORTIM_TEST_CMD set ise test runner.
 
     Faz 1.5: sensitive task'lar (auth/pii/payment) icin --human-reviewed
     flag'i ile insan onayini sinyalle.
@@ -2930,7 +2931,7 @@ def run_all(
     - sequential (default): tek tek, ana repo'da `task/<id>` checkout
     - parallel: batch icindeki task'lar ThreadPoolExecutor + git worktree
       ile paralel; merge'ler seri, status save lock altinda. Gerektirir:
-      git PATH'te ve `AI_FACTORY_GIT_ENABLED` 'false' degil.
+      git PATH'te ve `ORTIM_GIT_ENABLED` 'false' degil.
     - --phase N: scope.json'da phase>N olarak isaretli task'lar atlanir
       (DAG'da kalir ama PENDING durur). Phase ayrimi ortim scope ile yapilir.
     """
@@ -2960,7 +2961,7 @@ def run_all(
             if not git_enabled(workspace):
                 console.print(
                     "[red]--parallel requires git enabled "
-                    "(set AI_FACTORY_GIT_ENABLED=auto or true)[/red]"
+                    "(set ORTIM_GIT_ENABLED=auto or true)[/red]"
                 )
                 raise typer.Exit(1)
         except GitNotAvailable as e:
@@ -3414,8 +3415,11 @@ def demo(
     # Dialog mode off for the demo run — restored on exit. Without this,
     # `run` routes through INTAKE_DIALOG / STACK_DIALOG / PRD_DIALOG and
     # demo would need to also drive `ortim discuss` interactions.
-    saved_dialog = os.environ.get("AI_FACTORY_DIALOG_MODE")
-    os.environ["AI_FACTORY_DIALOG_MODE"] = "off"
+    # Clear both new and legacy names so the helper falls through to the
+    # explicit `off` we set, regardless of operator's prior env.
+    saved_new = os.environ.pop("ORTIM_DIALOG_MODE", None)
+    saved_legacy = os.environ.pop("AI_FACTORY_DIALOG_MODE", None)
+    os.environ["ORTIM_DIALOG_MODE"] = "off"
 
     def _step(args: list[str], label: str) -> int:
         console.print(f"[cyan]→ {label}[/cyan]")
@@ -3464,10 +3468,11 @@ def demo(
                 )
                 raise typer.Exit(code=rc)
     finally:
-        if saved_dialog is None:
-            os.environ.pop("AI_FACTORY_DIALOG_MODE", None)
-        else:
-            os.environ["AI_FACTORY_DIALOG_MODE"] = saved_dialog
+        os.environ.pop("ORTIM_DIALOG_MODE", None)
+        if saved_new is not None:
+            os.environ["ORTIM_DIALOG_MODE"] = saved_new
+        if saved_legacy is not None:
+            os.environ["AI_FACTORY_DIALOG_MODE"] = saved_legacy
 
     workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
     console.print("\n[bold green]Demo complete.[/bold green]")
