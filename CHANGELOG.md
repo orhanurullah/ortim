@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.8.2] — 2026-05-17
+
+Patch: fix sidebar URLs.
+
+### Fixed
+- `project.urls.Source`, `Issues`, `Changelog` now point to the actual
+  GitHub repo (`orhanurullah/ortim`) instead of the placeholder
+  `ortimdev/ortim` used in 0.8.1.
+- README `git clone` instruction + runbook contact link updated to
+  match.
+
+## [0.8.1] — 2026-05-17
+
+Patch: README rewritten as public-facing landing page; PyPI metadata
+expanded.
+
+### Added
+- `CHANGELOG.md` (this file) — Keep-a-Changelog format.
+- `author_email = contact@ortim.dev` (placeholder until domain MX
+  configured).
+- `project.urls`: Documentation, Source, Issues, Changelog.
+
+### Changed
+- README is now a vitrin / landing page (~150 lines). Internal
+  milestone history moved here, under "Development history (pre-public)".
+
 ## [0.8.0] — 2026-05-17
 
 First public release. Brand consolidation (`ai-factory` → `ortim`), PyPI

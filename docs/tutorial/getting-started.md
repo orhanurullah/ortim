@@ -22,7 +22,7 @@ Bu rehber:
 ### 1.1 Repo'yu klonla
 
 ```bash
-git clone https://github.com/<owner>/ortim.git
+git clone https://github.com/orhanurullah/ortim.git
 cd ortim
 python -m venv .venv
 .venv/Scripts/activate            # Windows

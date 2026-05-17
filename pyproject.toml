@@ -1,6 +1,6 @@
 [project]
 name = "ortim"
-version = "0.8.1"
+version = "0.8.2"
 description = "Ortim — agentic dev pipeline with deterministic architecture, audit, and gated execution"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,9 +38,9 @@ dev = [
 [project.urls]
 Homepage = "https://ortim.dev"
 Documentation = "https://ortim.dev/docs"
-Source = "https://github.com/ortimdev/ortim"
-Issues = "https://github.com/ortimdev/ortim/issues"
-Changelog = "https://github.com/ortimdev/ortim/blob/main/CHANGELOG.md"
+Source = "https://github.com/orhanurullah/ortim"
+Issues = "https://github.com/orhanurullah/ortim/issues"
+Changelog = "https://github.com/orhanurullah/ortim/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ortim = "ortim.main:app"

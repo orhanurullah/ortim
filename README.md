@@ -151,7 +151,7 @@ intake → babel → intake_dialog → stack_dialog → prd_dialog → prd_draft
 ## Geliştirme
 
 ```bash
-git clone https://github.com/<owner>/ortim.git
+git clone https://github.com/orhanurullah/ortim.git
 cd ortim
 python -m venv .venv
 .venv/Scripts/activate            # Windows
@@ -167,5 +167,5 @@ pytest
 
 ## Sorun bildirimi + destek
 
-- Issues: (R6 sonrası GitHub repo URL'i eklenecek)
+- Issues: [github.com/orhanurullah/ortim/issues](https://github.com/orhanurullah/ortim/issues)
 - Lisans soruları: `LICENSE` ve `LICENSE.commercial` notlarına bak; özel durumlar için `contact@ortim.dev`
