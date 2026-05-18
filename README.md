@@ -1,164 +1,226 @@
 # Ortim
 
-> Yapay zeka destekli, sıkı kurallı, çok-ajanlı yazılım geliştirme platformu.
+> A disciplined, multi-agent AI software factory. Turn a one-paragraph brief into working, reviewed, audit-trailed code — without surrendering control to the LLM.
 
-Ortim Türkçe brief'inden çalışan koda — PRD → RFC → Task DAG → Worker + Reviewer chain'i ile — götürür. Felsefe net: **markdown bilgiyi söyler, runtime kuralı zorlar**. LLM "atlamak" istese bile state machine, deterministik tier scorer ve DAG validator engeller.
+[![PyPI](https://img.shields.io/pypi/v/ortim.svg)](https://pypi.org/project/ortim/)
+[![Python](https://img.shields.io/pypi/pyversions/ortim.svg)](https://pypi.org/project/ortim/)
+[![License: FSL-1.1-Apache-2.0](https://img.shields.io/badge/license-FSL--1.1--Apache--2.0-blue.svg)](LICENSE)
 
 ```bash
 pip install ortim
 ```
 
-Gereksinim: Python ≥ 3.11, bir LLM API key (DeepSeek veya Anthropic).
+Requires Python ≥ 3.11 and an LLM API key (DeepSeek or Anthropic).
 
-## Ne işe yarar
+---
 
-LLM ile kod yazmanın yaygın acılarını yapısal olarak çözer:
+## Why this exists
 
-- **Sonsuz hata döngüleri yok** — her task için 3-deneme bütçesi, sonrasında `AWAITING_HITL`. Aynı failure'ı sessizce tekrarlamaz; Reviewer geri bildirimi yeni denemeye inject edilir.
-- **Belge-tabanlı akış** — PRD (ne) → RFC (nasıl) → Task DAG (atomik iş paketleri). Her ajan kendi katmanında kalır, biri diğerinin işini gizlice yapmaz.
-- **2 zorunlu insan onay noktası** (G1=PRD, G2=RFC) artı 5 koşullu gate (schema, external integration, security, deploy, budget) — kritik anlarda akış durur, sen onaylarsın.
-- **Çift-modelli ekonomi** — pahalı kararlar (Architect, Security Reviewer) Claude'da, ucuz/yüksek-hacim iş (Babel, Worker) DeepSeek'te kalabilir. Tek pipeline, başına ~$0.02-0.05 planning maliyeti.
-- **Audit + tamper-evidence** — her LLM çağrısı, her state geçişi, her hook çıktısı hash-chained JSONL'e düşer. PII redaction (KVKK/GDPR) default açık.
-- **Brownfield desteği** — `ortim init` cwd'deki mevcut Flutter/Tauri/React/Node/Python projesine plug-in olur; manifest auto-detect (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, ...), import-graph extraction, scope-aware task generation.
-- **Project mode (v0.9+)** — git/cargo/claude-code patterned cwd-aware execution. `cd <dir> && ortim status` her şeyi keşfeder.
+Coding with a bare LLM ("write me X") fails the same way every time:
 
-## Hızlı başlangıç
+- It re-implements code you already have because it forgot.
+- It tries a fix, the fix breaks something else, three turns later you've lost the original intent.
+- It quietly invents library names. It silently skips tests. It tells you it ran the migration when it didn't.
+- It picks microservices for a CRUD app, then asks for your approval on the same decision four times in a single session.
+- You can't audit any of it. There is no record of why a choice was made — only the final diff.
+
+Ortim treats AI coding as a **production-engineering problem**, not a prompting problem. A deterministic state machine, two mandatory human gates, a hash-chained audit log, scope-locked task DAGs, and module-boundary sandboxes turn an unreliable LLM into a reviewable software pipeline.
+
+→ **[docs/why-ortim.md](docs/why-ortim.md)** — what the structural differences buy you, with a side-by-side cost/quality comparison against vanilla LLM coding.
+
+---
+
+## Quick start
 
 ```bash
-# Kendi projenin dizinine geç
-cd ~/dev/todo-app
+# 1) Go to a project directory (greenfield or brownfield).
+mkdir ~/dev/task-tracker && cd ~/dev/task-tracker
 
-# 1) Workspace init et — cwd'de .ortim/ oluşur, brownfield otomatik tespit
-ortim init "Bir görev yönetim CLI'sı istiyorum, Python + SQLite, tek kullanıcı"
+# 2) Initialize. Ortim creates a .ortim/ namespace here and auto-detects
+#    whether the directory is a fresh start or an existing codebase.
+ortim init "A small task tracker CLI in Python with SQLite, single user, local only."
 
-# 2) Babel + Analyst + Stack diyaloğu — PRD'ye doğru ilerleme
+# 3) Let Babel + Analyst draft a PRD from the brief.
 ortim run
 
-# 3) PRD'yi gözden geçir, onayla (G1)
+# 4) Review the PRD and approve gate G1.
+ortim show --artifact prd
 ortim advance prd_approved
 
-# 4) Architect RFC çizsin
+# 5) Architect produces an RFC (tier, stack, modules, risks).
 ortim run
 
-# 5) RFC'yi gözden geçir, onayla (G2)
+# 6) Review the RFC and approve gate G2.
+ortim show --artifact rfc
 ortim advance rfc_approved
 
-# 6) Orchestrator DAG üretsin
-ortim run
+# 7) Orchestrator generates the task DAG; Worker + Reviewer execute it.
+ortim run                    # DAG generation
+ortim run-all --phase 1      # execute MVP tasks
 
-# 7) DAG'ı sıralı (veya paralel, --parallel) koştur
-ortim run-all
-
-# Maliyet + durum
-ortim budget
-ortim status
-
-# Diğer projeler de var mı?
-ortim ls
+# Observability
+ortim status                 # state + history
+ortim retro                  # token + USD cost rollup
+ortim drift-check            # RFC ↔ DAG ↔ status integrity
 ```
 
-Her komut arg yoksa cwd'deki `.ortim/`'i keşfeder. Pool layout'undaki eski workspace'lerle çalışmak için `--project <id>` flag'i hâlâ var (geriye uyumlu).
+Every command discovers the workspace from `cwd` (project mode, 0.9+). Run them inside the project directory, or use `--project / -p <id>` from anywhere. `ortim ls` lists every known workspace.
 
-Default'lar üretim-için-hazır: dialog mode açık, G1/G2 zorunlu insan onayı, Worker test komutunu önceden yazılı `.ortim.env`'den okur, git branch izolasyonu auto.
-
-Hızlı tam-pipeline demo'su (insan onay adımları otomatik):
+For a quick end-to-end walkthrough with no input:
 
 ```bash
-ortim demo --brief "Mini bir kişisel finans REST API. JWT auth, gelir/gider CRUD, aylık özet. Python + FastAPI + SQLite."
+ortim demo
 ```
 
-Demo tüm planning chain'i (Babel → Analyst → Architect → Orchestrator) sondan sona koştur; ~$0.02-0.05 maliyet (DeepSeek).
+→ Full tutorial: **[docs/tutorial/getting-started.md](docs/tutorial/getting-started.md)** (~15 minutes from install to a finished project).
 
-## Multi-provider
+---
 
-`ortim` her ajan rolünü ayrı bir LLM provider'a yönlendirebilir. `.env`:
+## What it actually does
+
+| Pain point | Ortim's structural answer |
+|---|---|
+| **Endless error loops** | 3-attempt budget per task with reviewer feedback injected into each retry; failures escalate to `AWAITING_HITL` instead of spinning forever. |
+| **Silent test/hook skips** | Reviewer chain (Code → Security → Test → Perf) treats `unverifiable` differently from `pass`; a missing test runner trips a distinct mode, not a false approval. |
+| **Architecture drift** | The Architect agent **does not** pick a tier — an LLM extracts characteristics from the PRD, a deterministic scorer (12 canonical tiers across web/mobile/desktop) picks the architecture. |
+| **Scope creep** | PRD locks MVP vs deferred features (Phase 1 / Phase 2+). Orchestrator emits zero tasks for Phase 2; they wait for `ortim extend` in a later cycle. |
+| **Module-boundary leaks** | Each task has a `module_scope`; the sandbox rejects writes outside it. Cross-module use is via imports, not file creation. |
+| **Hallucinated dependencies** | Bootstrap installs only declared `key_libraries`; an Architect validator (item 40) catches phantom libs in §4 of the RFC before they poison the DAG. |
+| **Token waste in non-English flows** | Babel translates a Turkish/etc. brief into a structured intent before any expensive call; "premium" models are reserved for Architect + Security Reviewer. |
+| **No audit trail** | Every LLM call, state transition, gate decision, and hook output lands in a hash-chained JSONL (`.ortim/audit.jsonl`). `ortim audit-verify` detects tampering. |
+| **Approval fatigue** | Two mandatory gates (G1 = PRD, G2 = RFC). Five conditional gates fire only when relevant (schema, external API, security finding ≥ medium, deploy, budget cap). |
+| **AI coding on existing codebases** | `ortim init` in a directory with `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `pubspec.yaml` auto-enters brownfield mode: import-graph extraction, scope-aware task generation. |
+
+---
+
+## Architecture at a glance
+
+```
+[brief]
+   ↓  Babel       (any language → structured intent, token-frugal)
+intent.json
+   ↓  Analyst chain (IntentAnalyst + StackAnalyst + PRDAnalyst; M2 conversational)
+PRD.md + stack.json
+   ↓  G1 — human approval (mandatory)
+   ↓  Architect    (Call 1: scorer inputs; Call 2: RFC with two-tier module breakdown)
+RFC.md + golden_path_inputs.json
+   ↓  G2 — human approval (mandatory)
+   ↓  Orchestrator (TaskDAG; Hard Rule 13: DAG ⊂ RFC modules)
+task_dag.json + .ortim/tasks/T-NNN.md
+   ↓  Worker × N  (FILE_BLOCK output, git branch per task)
+   ↓  Reviewer chain (Code → Security → Test → Perf; rubric-shaped verdicts)
+   ↓  Hooks       (pre_commit / pre_deploy)
+DONE
+```
+
+Two invariants worth naming:
+
+- **The LLM never picks a tier.** Architect Call 1 emits parameters; `ortim/architecture/golden_paths.py` does rule-based scoring (12 tiers: T0–T6 web, M0–M2 mobile, D0–D1 desktop).
+- **DAGs are runtime-validated.** If the LLM emits a cycle, a missing dependency, or an off-RFC module, validators retry up to 3× then escalate to `AWAITING_HITL`.
+
+Full specification: **[Ortim_Architecture.md](Ortim_Architecture.md)** (currently mixed TR/EN; full English translation tracked under Phase 4).
+
+---
+
+## Multi-provider routing
+
+Ortim routes each agent role to its own LLM provider. Most production setups use DeepSeek-only for budget reasons; route Architect and Security Reviewer to Anthropic when judgement matters.
 
 ```ini
-# Tek provider yeterli
+# .env — minimal
 DEEPSEEK_API_KEY=sk-...
 
-# Veya kritik rolleri Anthropic'e yönlendir
+# Hybrid — premium reasoning where it pays off
 ANTHROPIC_API_KEY=sk-ant-...
 ARCHITECT_PROVIDER=anthropic
 SECURITY_REVIEWER_PROVIDER=anthropic
 ```
 
-Bir tam planning chain DeepSeek'te ~$0.01. Architect + Security Reviewer Anthropic'teyse ~$0.05-0.10. Mevcut provider'lar: `anthropic`, `deepseek`, `ollama` (lokal/self-host), `openai`-uyumlu endpoint'ler.
+Approximate costs on observed proof-point runs (TR brief, 6–8 tasks, 80 %+ first-attempt approval):
+- DeepSeek-only: **$0.02–0.05** per planning chain, **$0.02–0.04** per task execution.
+- Hybrid (Architect + SecRev on Anthropic): **$0.05–0.10** planning, **$0.04–0.08** per task.
 
-## Mimari özet
+Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compatible endpoint.
 
+---
+
+## CLI cheatsheet
+
+```bash
+# Health + setup
+ortim doctor
+
+# New project (project mode — cwd-aware)
+mkdir ~/dev/cool && cd ~/dev/cool
+ortim init "<brief>"
+ortim run                          # Babel + Analyst → MVP_SCOPE_LOCKING
+ortim scope --lock                 # accept default phase split + advance to G1
+ortim show --artifact prd
+ortim advance prd_approved
+ortim run                          # Architect → RFC_AWAITING_APPROVAL
+ortim advance rfc_approved
+ortim run                          # Orchestrator → tasks_ready
+ortim run-all --phase 1            # Worker × N
+
+# Observability
+ortim status
+ortim tasks
+ortim retro
+ortim drift-check
+ortim show --artifact rfc
+
+# Iteration
+ortim refine "<feedback>"          # dialog-mode refine
+ortim extend "<new feature>"       # DONE project → delta cycle
+
+# Workspace management (from anywhere)
+ortim ls                           # all known workspaces; '*' = active
+ortim use <id|name>                # set active pointer (registry-backed)
+ortim status -p <id>               # target a specific workspace
+ortim workspace archive <id>
+ortim workspace cleanup --older-than 30 --archived-only --yes
 ```
-[TR brief]
-   ↓ Babel (TR → structured intent)
-intent.json
-   ↓ IntentAnalyst + StackAnalyst + PRDAnalyst (M2 conversational)
-PRD.md + stack.json
-   ↓ G1 — PRD onayı
-   ↓ Architect (Call 1: tier scorer inputs, Call 2: RFC)
-RFC.md + golden_path_inputs.json
-   ↓ G2 — RFC onayı
-   ↓ Orchestrator (TaskDAG, Hard Rule 13: DAG ⊂ RFC modülleri)
-task_dag.json + tasks/T-NNN.md
-   ↓ Worker + Reviewer (chain: Code + Security + Test + Perf)
-   ↓ Hooks (pre_commit / pre_deploy)
-DONE
-```
 
-İki invariant koruma altında:
+Full reference: `ortim --help`.
 
-- **Tier seçimini LLM yapmaz.** Architect Call 1 PRD'den parametre çıkarır; `ortim/architecture/golden_paths.py` kural-temelli skor hesaplar. 7 tier (T0-T6 web + M0-M2 mobile + D0-D1 desktop).
-- **DAG'ı runtime validate eder.** LLM cycle, eksik dep, RFC dışı modül üretirse 3× retry; sonrasında `AWAITING_HITL`.
+---
 
-Detaylı spec: [`Ortim_Architecture.md`](./Ortim_Architecture.md).
-
-## CLI komutları
-
-| Komut | Amaç |
-|---|---|
-| `ortim doctor` | Environment health check (Python, API keys, runtime binaries) |
-| `ortim new <brief> --name <ad>` | Yeni proje aç |
-| `ortim demo --brief "..."` | Tam pipeline demo (G1/G2 auto-approve) |
-| `ortim run <id>` | State'e göre uygun ajanı koştur |
-| `ortim discuss <id>` / `refine <id> "<feedback>"` / `lock <id>` | M2 conversational intake (intent / stack / PRD diyaloğu) |
-| `ortim advance <id> <target>` | Manuel state ilerletme (gate onayı, vs.) |
-| `ortim tasks <id>` | TaskDAG + batch'ler |
-| `ortim execute <id> <task-id>` | Tek task'ı Worker → tests → Reviewer pipeline'ından geçir |
-| `ortim run-all <id> [--parallel]` | DAG'ı topolojik batch'lerde koştur |
-| `ortim extend <id> "<brief>"` | DONE projeye iteratif feature delta'sı (M3.1) |
-| `ortim budget <id>` / `ortim retro <id>` | Token + USD raporu / per-task analiz |
-| `ortim drift-check <id>` | Multi-cycle integrity check |
-| `ortim states` | Tüm state'ler ve izinli geçişler |
-
-Tam liste: `ortim --help`.
-
-## State machine ve HITL gate'ler
+## State machine
 
 ```
 intake → babel → intake_dialog → stack_dialog → prd_dialog → prd_drafting
        → prd_awaiting_approval → prd_approved
-                 ↑ G1 (zorunlu)
+                 ↑ G1 (mandatory)
        → rfc_drafting → rfc_awaiting_approval → rfc_approved
-                              ↑ G2 (zorunlu)
+                              ↑ G2 (mandatory)
        → tasks_generating → tasks_ready → executing → done
 ```
 
-5 koşullu gate: **G3** (schema/migration), **G4** (external API call detected), **G5** (security severity ≥ medium), **G6** (deploy), **G7** (budget cap aşıldı). Her gate task'ı `AWAITING_HITL`'e gönderir, ilerleme `ortim advance ... <state>_approved`'a kadar durur.
+Conditional gates fire mid-execution: **G3** schema/migration, **G4** external API call, **G5** security severity ≥ medium, **G6** deploy, **G7** budget cap. Each pauses the task in `AWAITING_HITL`; `ortim advance <state>_approved` resumes.
 
-## Lisans
+---
 
-**Core**: [FSL-1.1-Apache-2.0](./LICENSE) — 2 yıl Functional Source License (non-compete), sonra otomatik Apache-2.0'a dönüşür.
+## License
 
-**Enterprise** (`enterprise/` dizini, M5+ kapsamı): [Commercial](./LICENSE.commercial). Multi-tenant orchestrator, SSO, audit retention, SLA. Şu an boş iskelet.
+- **Core** (this repo): [FSL-1.1-Apache-2.0](LICENSE) — Functional Source License, automatically converts to Apache-2.0 after two years. Production use is free; building a competing service against the same APIs is the only thing restricted, and only for two years.
+- **Enterprise** (`enterprise/` — multi-tenant orchestrator, SSO, audit retention, SLA): [Commercial](LICENSE.commercial). Currently a stub; first beta enterprise pilot is being scoped.
 
-## Daha fazla
+---
 
-- **Mimari**: [`Ortim_Architecture.md`](./Ortim_Architecture.md) — full spec
-- **Başlangıç rehberi**: [`docs/tutorial/getting-started.md`](./docs/tutorial/getting-started.md) — 15 dakikalık adım adım
-- **Hata kurtarma**: [`docs/runbook/failure-recovery.md`](./docs/runbook/failure-recovery.md)
-- **Sürüm geçmişi**: [`CHANGELOG.md`](./CHANGELOG.md)
-- **Geliştirici kurulumu** (katkı için): repo'yu klonla, `pip install -e .[dev]`, `pytest`
+## More documentation
 
-## Geliştirme
+- **[Why Ortim](docs/why-ortim.md)** — value framing, comparison vs vanilla LLM coding, when to use this vs Cursor/Aider/Claude Code.
+- **[Getting started](docs/tutorial/getting-started.md)** — ~15-minute end-to-end tutorial (greenfield + brownfield).
+- **[Failure recovery runbook](docs/runbook/failure-recovery.md)** — what to do when a task lands in `AWAITING_HITL`, budget gate trips, schema migration fails, etc.
+- **[Architecture spec](Ortim_Architecture.md)** — full master specification (TR/EN mixed; English-only revision is in flight).
+- **[Golden paths](docs/golden-paths/)** — reference docs for each of the 12 tiers.
+- **[Skill authoring guide](docs/skills/authoring-guide.md)** — how to inject project-specific patterns into Worker/Reviewer prompts.
+- **[Changelog](CHANGELOG.md)**.
+- **Türkçe arşiv:** [`docs/tr/`](docs/tr/) — original Turkish-language tutorial and runbook (kept in sync best-effort; the English version is canonical).
+
+---
+
+## Development
 
 ```bash
 git clone https://github.com/orhanurullah/ortim.git
@@ -173,9 +235,11 @@ mypy ortim
 pytest
 ```
 
-606 birim/entegrasyon testi, 22 deselect edilmiş e2e baseline (real-LLM fixture'lı, `-m e2e` ile opt-in). Tüm suite ~25 saniye.
+735 unit + integration tests, 22 deselected end-to-end baselines (real-LLM fixtures, opt-in with `-m e2e`). Full suite runs in ~37 seconds.
 
-## Sorun bildirimi + destek
+---
+
+## Issues + contact
 
 - Issues: [github.com/orhanurullah/ortim/issues](https://github.com/orhanurullah/ortim/issues)
-- Lisans soruları: `LICENSE` ve `LICENSE.commercial` notlarına bak; özel durumlar için `contact@ortim.dev`
+- License questions or commercial inquiries: `contact@ortim.dev`

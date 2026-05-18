@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.2] — 2026-05-18
+
+**Documentation pivot to English-canonical.** The PyPI page now leads with
+the English README; a new `docs/why-ortim.md` articulates the value
+proposition; tutorial and runbook are rewritten in English with
+international examples. Turkish versions are preserved as historical
+references under `docs/tr/`.
+
+### Added
+- `docs/why-ortim.md` — explains the structural pain points Ortim solves
+  (forgotten context, error loops, silent test skips, architecture drift,
+  hallucinated libraries, approval fatigue, missing audit), the design
+  choices that solve each (state machine, deterministic tier scorer, DAG
+  validators, module-scoped sandboxes, rubric-shaped reviewer chain, audit
+  hash chain, multi-provider routing), a concrete cost/quality comparison
+  vs vanilla LLM coding, and a positioning table vs Cursor / Aider /
+  Claude Code / Continue.dev. Also lists non-goals and target users.
+- `docs/tr/` directory: Turkish archives of `README.md`,
+  `tutorial/getting-started.md`, `runbook/failure-recovery.md`, each with
+  a header pointing at the English canonical version.
+
+### Changed
+- `README.md` rewritten in English. New value-led intro hooks into
+  `docs/why-ortim.md`; quick-start uses the project-mode `cd <dir> &&
+  ortim init` cadence; pain-point/answer table is foregrounded.
+- `docs/tutorial/getting-started.md` rewritten in English. Example briefs
+  are now internationally legible (task tracker, expense tracker) instead
+  of Turkish-specific. The structure, gate explanations, and trust
+  calibration section remain — the rewrite tightens phrasing rather than
+  changing the flow.
+- `docs/runbook/failure-recovery.md` rewritten in English. §0 project-mode
+  quick reference retained; every recipe phrased in English; pointers to
+  `.ortim/audit.jsonl` and `.ortim/task_status.json` for forensic work
+  carried over from 0.9.1.
+
+### Deferred
+- `Ortim_Architecture.md` remains mixed Turkish/English. A full English
+  pass is scoped for Phase 4 (likely paired with the M5 RAG work).
+
 ## [0.9.1] — 2026-05-18
 
 **Patch release.** Fixes the `ortim demo` subprocess chain (it was broken by

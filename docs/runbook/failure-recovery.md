@@ -1,41 +1,43 @@
-# Ortim — Failure Recovery Cookbook
+# Ortim — Failure Recovery Runbook
 
-> Bir şey ters gittiğinde ne yapacağın listesi. Tutorial'ı bitirdiysen ve gerçek bir projede takıldıysan buradan başla.
+> What to do when things go wrong. Start here if you've finished the tutorial and a real project hit a wall.
 
-İçindekiler:
-0. [Project mode komut hızlı referans](#0-project-mode-komut-hızlı-referans)
-1. [Senin tarafında durum tespiti](#1-senin-tarafında-durum-tespiti)
-2. [Task AWAITING_HITL'e takıldı](#2-task-awaiting_hitle-takıldı)
-3. [Worker 3 deneme sonra başarısız oldu](#3-worker-3-deneme-sonra-başarısız-oldu)
-4. [G7 budget gate açıldı — devam edemiyorum](#4-g7-budget-gate-açıldı--devam-edemiyorum)
-5. [Eski workspace yüklenmiyor (schema migration)](#5-eski-workspace-yüklenmiyor-schema-migration)
-6. [Architect yanlış stack seçti](#6-architect-yanlış-stack-seçti)
-7. [Sandbox çağrısı reject ediyor (`module_scope` ihlali)](#7-sandbox-çağrısı-reject-ediyor-module_scope-i̇hlali)
-8. [State machine "Cannot transition" hatası](#8-state-machine-cannot-transition-hatası)
-9. [Hiçbir şey çalışmıyor — workspace'i sıfırdan başlat](#9-hiçbir-şey-çalışmıyor--workspaceyi-sıfırdan-başlat)
+Turkish-language original: [`docs/tr/runbook/failure-recovery.md`](../tr/runbook/failure-recovery.md).
+
+Contents:
+0. [Project mode command quick reference](#0-project-mode-command-quick-reference)
+1. [Diagnose first](#1-diagnose-first)
+2. [A task stuck in AWAITING_HITL](#2-a-task-stuck-in-awaiting_hitl)
+3. [Worker failed after 3 attempts](#3-worker-failed-after-3-attempts)
+4. [G7 budget gate tripped — can't continue](#4-g7-budget-gate-tripped--cant-continue)
+5. [Old workspace fails to load (schema migration)](#5-old-workspace-fails-to-load-schema-migration)
+6. [Architect picked the wrong stack](#6-architect-picked-the-wrong-stack)
+7. [Sandbox rejecting writes (`module_scope` violation)](#7-sandbox-rejecting-writes-module_scope-violation)
+8. [State machine "Cannot transition" error](#8-state-machine-cannot-transition-error)
+9. [Nothing works — restart the workspace](#9-nothing-works--restart-the-workspace)
 
 ---
 
-## 0. Project mode komut hızlı referans
+## 0. Project mode command quick reference
 
-Ortim 0.9'dan itibaren komutlar **cwd-aware**: ilgili workspace'i çalıştığın dizinden (veya parent'larından) keşfeder. Aşağıdaki örneklerde proje dizinin içinden çalıştığın varsayılır.
+From Ortim 0.9, commands are **cwd-aware**: they discover the active workspace from the current directory (or its parents). Examples below assume you're running from inside the project directory.
 
-| Komut sınıfı | Pattern | Örnek |
+| Command class | Pattern | Example |
 |---|---|---|
-| Read komutları (`status`, `tasks`, `inspect`, `gates`, `show`, `extensions`, `retro`, `drift-check`) | `<cmd>` veya `<cmd> <id>` (legacy pool fallback) | `ortim status` · `ortim retro` |
-| Tek-mutating (`run`, `run-all`, `refine`, `lock`, `scope`, `budget`, `rescan`, `baseline`) | `<cmd>` veya `<cmd> <id>` (legacy pool fallback) | `ortim run` · `ortim scope --lock` |
-| Çoklu-arg (`advance`, `execute`, `extend`) | `<cmd> <other-arg> [-p <id>] ...` | `ortim advance prd_approved --note "x"` |
-| Workspace yönetimi | `ortim ls` · `ortim use <id\|name>` · `ortim workspace {show,archive,cleanup,doctor,migrate}` | `ortim use cool-project` |
+| Read commands (`status`, `tasks`, `inspect`, `gates`, `show`, `extensions`, `retro`, `drift-check`) | `<cmd>` or `<cmd> <id>` (legacy pool fallback) | `ortim status` · `ortim retro` |
+| Single-mutating (`run`, `run-all`, `refine`, `lock`, `scope`, `budget`, `rescan`, `baseline`) | `<cmd>` or `<cmd> <id>` (legacy pool fallback) | `ortim run` · `ortim scope --lock` |
+| Multi-arg (`advance`, `execute`, `extend`) | `<cmd> <other-arg> [-p <id>] ...` | `ortim advance prd_approved --note "x"` |
+| Workspace management | `ortim ls` · `ortim use <id\|name>` · `ortim workspace {show,archive,cleanup,doctor,migrate}` | `ortim use cool-project` |
 
-Farklı dizinden çalışıyorsan veya birden çok workspace varsa hepsinde `--project / -p <id>` flag'i çalışır. Pool legacy workspace ID'leri de positional/flag olarak resolve edilir.
+From outside the project directory, or when multiple workspaces exist, the `--project / -p <id>` flag works on every command. Legacy pool workspace IDs also resolve as positional or via the flag.
 
-Metadata path'i: project mode'da `<your-dir>/.ortim/` (state.json, audit.jsonl, tasks/, ...). Pool mode'da `workspaces/<id>/`.
+Metadata location: Project Mode → `<your-dir>/.ortim/` (state.json, audit.jsonl, tasks/, ...). Pool Mode → `workspaces/<id>/`.
 
 ---
 
-## 1. Senin tarafında durum tespiti
+## 1. Diagnose first
 
-Sorunu anlamadan müdahale etme. Proje dizininden çalıştığını varsayarak şu üç komut neredeyse her teşhisi açar:
+Don't act before you know what happened. From the project directory:
 
 ```bash
 ortim status        # state machine + history
@@ -43,307 +45,308 @@ ortim retro         # cost + retry rate + HITL escalations
 ortim drift-check   # RFC ↔ DAG ↔ status alignment
 ```
 
-Daha derin:
+Deeper:
 
 ```bash
 # Audit log (project mode: .ortim/audit.jsonl)
-type .ortim\audit.jsonl                       # Windows
-# cat .ortim/audit.jsonl                      # Unix
+type .ortim\audit.jsonl                           # Windows
+# cat .ortim/audit.jsonl                          # Unix
 
-# Task durumlarının tek-bakış tablosu
+# Filter audit log by task ID
+findstr "T-005" .ortim\audit.jsonl                # Windows
+# grep "T-005" .ortim/audit.jsonl                 # Unix
+
+# Task DAG overview
 ortim tasks
 
-# Belirli bir task'ın history'si — audit log'u task id ile filtrele
-findstr "T-005" .ortim\audit.jsonl            # Windows
-# grep "T-005" .ortim/audit.jsonl             # Unix
-
-# Task'ın son review verdict'i + retry count'u — task_status.json sidecar
-type .ortim\task_status.json | findstr -A 20 "T-005"   # quick peek
+# Per-task status (last_review_reasons, retry count, current status)
+type .ortim\task_status.json                      # Windows
+# cat .ortim/task_status.json | jq .              # Unix
 ```
 
-Pool legacy workspace ise audit log `workspaces/<id>/audit.jsonl` veya `runtime/audit/<date>.jsonl`'de.
+For pool legacy workspaces, the audit log is at `workspaces/<id>/audit.jsonl` or `runtime/audit/<date>.jsonl`.
 
-`state.json` her zaman ground truth — project mode'da `.ortim/state.json`'u, pool mode'da `workspaces/<id>/state.json`'u manuel okumak da meşru bir adım.
+`state.json` is always the ground truth — opening it directly (`.ortim/state.json` in project mode, `workspaces/<id>/state.json` in pool mode) is a legitimate diagnostic step.
 
 ---
 
-## 2. Task AWAITING_HITL'e takıldı
+## 2. A task stuck in AWAITING_HITL
 
-### Belirti
+### Symptom
 
-`ortim tasks` çıktısında bir veya birden çok task `AWAITING_HITL` durumunda. `ortim run-all` bu state'te kendiliğinden durur.
+`ortim tasks` shows one or more tasks in `AWAITING_HITL`. `ortim run-all` stops cleanly at that state.
 
-### Sebep tespiti
+### Identify the cause
 
-`.ortim/task_status.json`'u aç (project mode) — her task için status + `last_review_reasons` + retry count tutar. Pool mode'da `workspaces/<id>/task_status.json`. Üç ana kategori:
+Open `.ortim/task_status.json` (project mode) or `workspaces/<id>/task_status.json` (pool). It records each task's status, `last_review_reasons`, and retry count. Five tags to recognize:
 
-| Tag | Anlam | Çözüm yolu |
+| Tag | Meaning | Recovery path |
 |---|---|---|
-| `[sandbox]` | Worker scope dışına yazdı | §7'ye git |
-| `[criterion]` | Acceptance criterion karşılanmadı | Aşağıya bak |
-| `[test_infrastructure_unavailable]` | Test runner yok/kırık | §2.3'e bak |
-| `[security_veto]` | SecurityReviewer hard veto | §2.4'e bak |
-| `[criteria_design_failure]` | Criterion'un kendisi belirsiz | §2.5'e bak |
+| `[sandbox]` | Worker wrote outside `module_scope` | §7 |
+| `[criterion]` | An acceptance criterion failed | §2.1 |
+| `[test_infrastructure_unavailable]` | Test runner missing or broken | §2.3 |
+| `[security_veto]` | SecurityReviewer hard-vetoed | §2.4 |
+| `[criteria_design_failure]` | The criterion itself is ambiguous | §2.5 |
 
-### 2.1 Criterion karşılanmadı — Worker düzeltemiyor
+### 2.1 Criterion fails — Worker can't satisfy it
 
-Önce manuel olarak kodun nerede yetersiz kaldığını anla:
+First, understand where the code falls short:
 
 ```bash
-# Worker'ın son output'u + Reviewer verdict'i — audit log'da
-findstr "T-005" .ortim\audit.jsonl                                  # Windows
-# grep '"T-005"' .ortim/audit.jsonl | jq .                          # Unix
+# Worker output + Reviewer verdicts are in the audit log
+findstr "T-005" .ortim\audit.jsonl                      # Windows
+# grep '"T-005"' .ortim/audit.jsonl | jq .              # Unix
 
-# Mevcut kod durumu için cwd'deki branch'i tara
+# Current code state on the task's branch
 git log --all --oneline -- '*T-005*'
 ```
 
-Kod yazılmış ama beklenti karşılanmıyorsa:
+When code was written but doesn't meet expectations:
 
-**Task'ı yeniden koş (önerilen)**
+**Rerun the task (recommended)**
 
 ```bash
 ortim execute T-005 --max-attempts 3
 ```
 
-> Worker'ın görmediği bir sinyali manuel feedback olarak iletmek için `.ortim/tasks/T-005.md`'i aç ve Acceptance Criteria'yı netleştir. Sonra `ortim execute T-005`.
+> To give Worker a signal it can't infer on its own, open `.ortim/tasks/T-005.md` and tighten the acceptance criteria. Then `ortim execute T-005`.
 
-**Kodu manuel düzeltmek istiyorsan** task'ı çalıştırmadan kod değişikliğini commit'le; Reviewer akışı yine de çalışır (Worker'a "skip code emission, use existing" sinyali şu an yok — manuel commit + reset ile karışıklığa girersen task'ın audit history'si tutarsız kalır).
+**Manual code fix:** committing the fix directly bypasses the Worker; the Reviewer chain still runs. There's currently no "skip code emission, use existing" signal for Worker, so mixing manual commits with `ortim execute` leaves the audit history inconsistent. Prefer rerunning.
 
-### 2.2 Criterion belirsiz — Reviewer doğru reddetti
+### 2.2 Criterion is ambiguous — Reviewer correctly rejected
 
-Eğer reviewer verdict'i `status: unverifiable` + mode `criteria_design_failure` ise Orchestrator yanlış criterion emit etmiş demektir (Hard Rule 10 ihlali — "readable", "user-friendly" gibi belirsiz kelimeler).
+If a Reviewer verdict shows `status: unverifiable` + mode `criteria_design_failure`, Orchestrator emitted a bad criterion (Hard Rule 10 violation — "readable", "user-friendly", and similar vague words are banned).
 
-Çözüm: criterion'u manuel düzenle.
+Edit it manually:
 
 ```bash
-# .ortim/tasks/T-005.md aç, "Acceptance Criteria" listesini düzelt
-# Belirsiz: "stdout shows todos in readable format"
-# Net: "stdout matches /^(\[ \] [0-9a-f-]{36} .+\n)*$/"
+# Open .ortim/tasks/T-005.md and fix the "Acceptance Criteria" list
+# Ambiguous:  "stdout shows todos in readable format"
+# Concrete:   "stdout matches /^(\[ \] [0-9a-f-]{36} .+\n)*$/"
 
 ortim execute T-005
 ```
 
-Veya DAG'ı yeniden generate et (daha temiz ama pahalı):
+Or regenerate the DAG (cleaner, but pays the Architect/Orchestrator cost again):
 
 ```bash
 ortim advance rfc_approved
-ortim run            # Orchestrator yeniden çağrılır
+ortim run            # Orchestrator re-runs
 ```
 
 ### 2.3 `test_infrastructure_unavailable`
 
-Worker test yazdı ama test runner çağrısı exit ≠ 0 (test runner missing veya broken).
+Worker wrote tests, but the test runner returned non-zero (runner missing or broken).
 
 ```bash
-# .ortim.env içeriği (project mode: cwd kökünde)
-type .ortim.env                          # Windows
-# cat .ortim.env                         # Unix
+# .ortim.env (project mode: at cwd root)
+type .ortim.env                                # Windows
+# cat .ortim.env                               # Unix
 # ORTIM_TEST_CMD=npx vitest run
 ```
 
-Pool mode'da `workspaces/<id>/.ortim.env`.
+Pool mode: `workspaces/<id>/.ortim.env`.
 
-Test komutu doğru mu, ilgili package install edildi mi?
+Is the command correct? Are the relevant packages installed?
 
 ```bash
-npm install        # veya pip install -r requirements.txt
-# elle test komutunu koş
+npm install        # or pip install -r requirements.txt
+# manually run the test command
 npx vitest run
 ```
 
-Komut OK ise:
+If it works:
 
 ```bash
 ortim execute T-005
 ```
 
-`ORTIM_TEST_CMD` yanlışsa `.ortim.env` dosyasını elle düzelt + execute.
+If `ORTIM_TEST_CMD` is wrong, edit `.ortim.env` directly + rerun.
 
 ### 2.4 `security_veto`
 
-SecurityReviewer hard veto verdi (hardcoded secret, SQL injection, eval, vs.). Audit log'da verdict'in detayını gör:
+SecurityReviewer issued a hard veto (hardcoded secret, SQL injection, eval, etc.). Inspect the verdict:
 
 ```bash
 findstr "T-005" .ortim\audit.jsonl | findstr "security"   # Windows
 # grep '"T-005"' .ortim/audit.jsonl | grep security        # Unix
 ```
 
-Verdict somut bir issue gösterir. `.ortim/tasks/T-005.md`'deki criterion'u (örn. "auth uses environment variable") açıkça yaz → `ortim execute T-005`.
+The verdict names a concrete issue. Either edit `.ortim/tasks/T-005.md` to add an explicit criterion (e.g., "auth secret read from environment variable") and rerun, or fix the code manually and skip ahead.
 
 ### 2.5 `criteria_design_failure`
 
-Orchestrator'ın Hard Rule 10 ihlali kaçırdığı criterion. Manuel düzelt, reset. `agents/orchestrator.md` Hard Rule 10'da banned-word listesi var; benzer pattern'ler için Orchestrator prompt'unu sertleştirmek de bir adım (sistemik fix).
+Orchestrator emitted a criterion that violated Hard Rule 10 (ambiguous wording). Manually edit `.ortim/tasks/T-005.md` and rerun. If the same pattern shows up repeatedly, the systemic fix is tightening Orchestrator's banned-words list in `agents/orchestrator.md`.
 
 ---
 
-## 3. Worker 3 deneme sonra başarısız oldu
+## 3. Worker failed after 3 attempts
 
-3 deneme = max retry. State `AWAITING_HITL`'e geçer (§2'ye bak). Yeniden 3 deneme istemen için:
+3 attempts is the default max retry budget. State transitions to `AWAITING_HITL` (§2). To grant another 3 attempts:
 
 ```bash
 ortim execute T-005 --max-attempts 3
 ```
 
-**Üç deneme bitti, hâlâ başarısız** = sistem sana sinyal veriyor: ya criterion belirsiz, ya kod karmaşık, ya Worker LLM'in kapasitesini aşıyor.
+If three attempts already failed and the next round fails too, the system is signaling: either the criterion is ambiguous, the code is too complex for the Worker LLM, or the task is over-scoped.
 
-Çareler:
-- Task'ı **böl** — `.ortim/tasks/T-005.md`'yi 2-3 daha küçük task'a manuel parçala, `.ortim/task_dag.json`'u elle güncelle.
-- Architect'i daha güçlü provider'a al — `WORKER_PROVIDER=anthropic` veya `WORKER_MODEL=claude-opus-4`.
-- Reviewer'ın geri bildirimini PRD/RFC'ye geri yedir — bazen feature'ın kendisi yanlış tasarlanmış.
+Remedies:
+- **Split the task** — manually edit `.ortim/tasks/T-005.md` into 2–3 smaller tasks; patch `.ortim/task_dag.json` accordingly.
+- **Upgrade the Worker LLM** — `WORKER_PROVIDER=anthropic` or `WORKER_MODEL=claude-opus-4` in `.env`.
+- **Feed Reviewer feedback back into PRD/RFC** — sometimes the feature design itself is wrong, not the implementation.
 
 ---
 
-## 4. G7 budget gate açıldı — devam edemiyorum
+## 4. G7 budget gate tripped — can't continue
 
-### Belirti
+### Symptom
 
 ```
 G7 — Budget cap breached.
 Spent $2.34 / cap $2.00 (117%)
 ```
 
-State: `BUDGET_AWAITING_APPROVAL`. `run-all` durur.
+State: `BUDGET_AWAITING_APPROVAL`. `run-all` halts.
 
-### Üç seçenek
+### Three choices
 
-**Devam et (overage'i kabul ederek):**
+**Continue (accept the overage):**
 
 ```bash
 ortim advance budget_approved --note "approved overage for T-005-T-008"
 ```
 
-**Cap'i artır (önce):**
+**Raise the cap first:**
 
 ```bash
-# .env dosyasında
+# In .env
 ORTIM_BUDGET_CAP_USD=5.00
-# yeni terminal aç (env reload)
+# open a fresh terminal so env reload picks up the new value
 ortim advance budget_approved
 ```
 
-**Durdur:**
+**Pause:**
 
 ```bash
 ortim advance paused --note "budget exceeded; reviewing"
 ```
 
-Pause sonrası `ortim retro` ile maliyet breakdown'u: hangi kategori spike ettin?
-- Architect retry'a girdi mi (drift validator)?
-- Worker bir task için 3× retry yaptı mı?
-- RFC çok mu büyük (token sayısı)?
+After pausing, `ortim retro` breaks down spend by category. Where did it spike?
+- Architect retried (drift validator fired).
+- One task burned its full retry budget.
+- PRD/RFC very large (high token count).
 
 ---
 
-## 5. Eski workspace yüklenmiyor (schema migration)
+## 5. Old workspace fails to load (schema migration)
 
-### Belirti
+### Symptom
 
 ```
 pydantic_core._pydantic_core.ValidationError: ...
 ```
 
-State.json veya scope.json eski şema ile yazılmış, yeni kod schema bekliyor.
+The on-disk `state.json` or `scope.json` was written with an older schema; the current code expects new fields.
 
-### Çözüm
+### Recovery
 
-Pydantic `default` field'ları geriye uyumlu olmalı (eski JSON'lar yeni field'ları default değerle yükler). Hâlâ patlıyorsa:
+Pydantic `default` values should make older JSON load-compatible (older files get the new fields populated with defaults). If you're still seeing a hard error:
 
-1. **Workspace yedeği al:**
+1. **Back up the workspace:**
    ```bash
-   # Project mode: sadece metadata'yı yedekle
+   # Project mode: only the metadata
    cp -r .ortim .ortim.bak                       # Unix
    xcopy /E /I .ortim .ortim.bak                 # Windows
-   # Pool mode: tüm workspace dizinini yedekle
+   # Pool mode: the whole directory
    # cp -r workspaces/<id> workspaces/<id>-backup
    ```
 
-2. **JSON dosyasını manuel düzelt** — eksik field'ları ekle:
+2. **Edit the JSON manually** — add missing fields:
    ```json
-   // Pre-1.1 state.json'a Faz 1.1 sonrası
+   // Example: pre-Phase-1.1 state.json after the Phase-1.1 schema bump
    {
      ...
      "user_stack_hints": [],
      "phase": 1
    }
    ```
-   Project mode'da `.ortim/state.json`'u, pool mode'da `workspaces/<id>/state.json`'u düzelt.
+   Project mode: `.ortim/state.json`. Pool mode: `workspaces/<id>/state.json`.
 
-3. **Migration logu yaz:**
+3. **Log the migration:**
    ```bash
    echo "$(date) — manual migration v0.7 → v0.8" >> .ortim/MIGRATIONS.md
    ```
 
-> **Otomatik migration tooling Faz 4'e ertelendi** (roadmap 3.2 → Faz 4). Şu an manuel.
+> **Automatic migration tooling is deferred to Phase 4** (roadmap item 3.2). For now, migration is manual.
 
 ---
 
-## 6. Architect yanlış stack seçti
+## 6. Architect picked the wrong stack
 
-### Belirti
+### Symptom
 
-RFC §4'te brief'te söylemediğin bir teknoloji var (örn. "SQLite dedim, PostgreSQL yazıldı").
+RFC §4 names a technology you didn't ask for (e.g., "I said SQLite, it wrote PostgreSQL").
 
-### Tespit
+### Diagnose
 
 ```bash
-type .ortim\intent.json | findstr "user_stack_hints"   # Windows
-# cat .ortim/intent.json | grep -A 10 user_stack_hints # Unix
+type .ortim\intent.json | findstr "user_stack_hints"     # Windows
+# cat .ortim/intent.json | grep -A 10 user_stack_hints   # Unix
 ```
 
-`user_stack_hints` array boş mu, yoksa senin söylediklerini içeriyor mu?
+Is `user_stack_hints` empty, or does it list what you said?
 
-**Boşsa:** Babel hint'lerini çıkaramamış. Brief'i daha açık yaz (örn. "PostgreSQL kullanalim" gibi açık isim, "veritabani" değil).
+**Empty:** Babel didn't extract the hint. Make the brief more concrete — name the technology explicitly ("PostgreSQL", "SQLite", "FastAPI") instead of generic terms ("database", "API").
 
-**Doluysa ama RFC ezdi:** Faz 1.2 B-2 fix bunu kapatıyor. Hâlâ oluyorsa bir bug — issue aç + reproduce et.
+**Populated but RFC overrode it:** Phase 1.2 B-2 fix is supposed to cover this. If you're still seeing the bug, file an issue with a reproduction.
 
-### Çözüm
+### Fix
 
-State'i RFC_DRAFTING'e geri at, RFC.md'yi elle düzelt veya Architect'i yeniden çağır:
+Roll back to `rfc_drafting`, edit `RFC.md` directly or rerun Architect:
 
 ```bash
 ortim advance rfc_drafting
 ortim run
 ```
 
-Veya direkt `.ortim/RFC.md`'yi düzenle + onayla:
+Or edit `.ortim/RFC.md` manually and approve:
 
 ```bash
-# RFC.md'yi metin editöründe aç, §4'ü düzelt
+# Open .ortim/RFC.md, fix §4 by hand
 ortim advance rfc_awaiting_approval
 ortim advance rfc_approved --note "manually edited stack section"
 ```
 
 ---
 
-## 7. Sandbox çağrısı reject ediyor (`module_scope` ihlali)
+## 7. Sandbox rejecting writes (`module_scope` violation)
 
-### Belirti
+### Symptom
 
-`audit.jsonl` içinde:
+In `.ortim/audit.jsonl`:
 ```
 executor_sandbox_violation: Worker tried to write 'auth/foo.ts' but module_scope is 'tasks'
 ```
 
-### Sebep
+### Why
 
-Worker DAG'da `module_scope: "tasks"` olan bir task için `auth/` altına yazmaya çalıştı — L1 module boundary ihlali. Sandbox doğru rejection yaptı.
+Worker tried to ship a file in a module other than the one declared in the task's `module_scope`. The sandbox correctly rejected it — L1 module boundary defense.
 
-İki olası kök neden:
-- **Orchestrator bug:** task description'da iki modüle değen iş tanımlandı. DAG'ı yeniden generate etmek lazım.
-- **Worker drift:** Architect ipucu vermesine rağmen Worker yanlış path seçti.
+Two possible root causes:
+- **Orchestrator bug:** task description bridges two modules. DAG needs regeneration.
+- **Worker drift:** the Architect hinted at the right path but the Worker chose another.
 
-### Çözüm
+### Fix
 
-İlk önce Item 15a sandbox feedback retry'ı çalıştırın — auto-retry pattern. Eğer 3 deneme sonra hâlâ aynı ihlal:
+First, let Item 15a's sandbox feedback retry run — it injects a structured correction into the next attempt. If three attempts produce the same violation:
 
 ```bash
-# task brief'i manuel düzelt — beklenen path'i açıkça yaz
+# Manually edit the task brief to make the expected path explicit
 # .ortim/tasks/T-005.md → "Create the file `tasks/repository.ts` (NOT auth/...)"
 ortim execute T-005
 ```
 
-Veya Orchestrator'ı yeniden çağır (DAG'ı yeniden üretir):
+Or regenerate the DAG (Orchestrator re-runs):
 
 ```bash
 ortim advance rfc_approved
@@ -352,86 +355,86 @@ ortim run
 
 ---
 
-## 8. State machine "Cannot transition" hatası
+## 8. State machine "Cannot transition" error
 
-### Belirti
+### Symptom
 
 ```
 InvalidTransition: Cannot transition prd_drafting -> rfc_drafting.
 Allowed: ['failed', 'mvp_scope_locking']
 ```
 
-State machine doğru sebepten engelliyor — bir gate'i atlamaya çalışıyorsun.
+The state machine is blocking you on purpose — you tried to skip a gate.
 
-### Çözüm
+### Recovery
 
-Geçerli transition'ları görmek için:
+List legal transitions:
 
 ```bash
 ortim states
 ```
 
-Geri-adımlama meşru: Faz 1.1 sonrası şu back-step transition'lar çalışır:
+Backward transitions are legal in many cases (post-Phase-1.1):
 - `prd_awaiting_approval` → `prd_drafting`
-- `mvp_scope_locking` → `prd_dialog` veya `prd_drafting`
+- `mvp_scope_locking` → `prd_dialog` or `prd_drafting`
 - `rfc_awaiting_approval` → `rfc_drafting`
 - `executing` → `paused`
-- `paused` → birçok state
+- `paused` → many states
 
-Manuel state set etmek istersen `ortim advance <state>` doğrudan transition çalıştırır.
+Manually setting a state is fine: `ortim advance <state>` runs the transition.
 
 ---
 
-## 9. Hiçbir şey çalışmıyor — workspace'i sıfırdan başlat
+## 9. Nothing works — restart the workspace
 
-Bazen en hızlı yol baştan başlamaktır.
+Sometimes the fastest fix is starting clean.
 
-**Project mode** (önerilen): mevcut workspace'i arşivle veya silme yerine yeni bir dizinden başlat.
+**Project mode** (recommended): archive the metadata or start in a fresh directory.
 
 ```bash
-# Opsiyon A: aynı dizinde tut, sadece metadata'yı sıfırla
+# Option A: keep the directory, reset just the metadata
 mv .ortim .ortim.broken-$(date +%Y%m%d)         # Unix
-# Windows: rename .ortim .ortim.broken-YYYYMMDD
-ortim init "$(cat brief.txt)"                    # taze .ortim/ yarat
+# Windows: rename .ortim to .ortim.broken-YYYYMMDD
+ortim init "$(cat brief.txt)"                    # fresh .ortim/
 
-# Opsiyon B: registry'den arşivle, yeni dizinde aç
+# Option B: archive in the registry, open a new directory
 ortim workspace archive <id>
 mkdir ~/dev/cool-project-v2 && cd ~/dev/cool-project-v2
 ortim init "$(cat brief.txt)"
 ```
 
-**Pool legacy** workspace ise:
+**Pool legacy:**
 
 ```bash
 mv workspaces/<id> workspaces/<id>-broken-$(date +%Y%m%d)
-# Sonra yeni dizinde başlat:
 mkdir ~/dev/cool-project && cd ~/dev/cool-project
 ortim init "$(cat brief.txt)"
 ```
 
-**Eski workspace'ten ne alırsın:**
-- `.ortim/intent.json`, `.ortim/PRD.md`, `.ortim/RFC.md` — manuel kopyalama meşru, yeni state'lere advance et
-- `.ortim/task_dag.json` — Orchestrator'ı yeniden çağırarak daha temiz
+**Carry over from the old workspace:**
+- `.ortim/intent.json`, `.ortim/PRD.md`, `.ortim/RFC.md` — manually copy, then advance the new project through the gates.
+- `.ortim/task_dag.json` — usually cleaner to regenerate by re-running Orchestrator.
 
-**Eski workspace'ten ne almaman gerekir:**
-- `.ortim/state.json` — schema değişebilir
-- `.ortim/audit.jsonl` — yeni hash chain'le karışmasın
-
----
-
-## Yardım istemek için
-
-Issue açarken şunları ekle:
-- `ortim doctor` çıktısı
-- `ortim status` + `ortim retro` + `ortim drift-check` (proje dizininden)
-- audit log son 30 satır (`.ortim/audit.jsonl`; PII yokmuş gibi temizle)
-- Tekrar üretim için kullandığın brief
-
-GitHub: `https://github.com/orhanurullah/ortim/issues`
+**Do NOT carry over:**
+- `.ortim/state.json` — schema may have changed.
+- `.ortim/audit.jsonl` — would corrupt the new project's hash chain.
 
 ---
 
-İlgili dokümanlar:
-- [Tutorial](../tutorial/getting-started.md) — sıfırdan başlangıç
-- [Architecture](../../Ortim_Architecture.md) — sistem nasıl çalışır
-- [Backlog](../backlog.md) — bilinen açık item'lar
+## Asking for help
+
+When opening an issue, include:
+- `ortim doctor` output.
+- `ortim status` + `ortim retro` + `ortim drift-check` (from the project directory).
+- Last 30 lines of `.ortim/audit.jsonl` (scrub PII first).
+- The brief used to reproduce the issue.
+
+GitHub: [github.com/orhanurullah/ortim/issues](https://github.com/orhanurullah/ortim/issues)
+
+---
+
+Related documents:
+- [Tutorial](../tutorial/getting-started.md) — start from scratch.
+- [Why Ortim](../why-ortim.md) — value framing + comparison vs alternatives.
+- [Architecture](../../Ortim_Architecture.md) — how the system works.
+- [Backlog](../backlog.md) — open issues and their current status.
