@@ -19,35 +19,45 @@ LLM ile kod yazmanın yaygın acılarını yapısal olarak çözer:
 - **2 zorunlu insan onay noktası** (G1=PRD, G2=RFC) artı 5 koşullu gate (schema, external integration, security, deploy, budget) — kritik anlarda akış durur, sen onaylarsın.
 - **Çift-modelli ekonomi** — pahalı kararlar (Architect, Security Reviewer) Claude'da, ucuz/yüksek-hacim iş (Babel, Worker) DeepSeek'te kalabilir. Tek pipeline, başına ~$0.02-0.05 planning maliyeti.
 - **Audit + tamper-evidence** — her LLM çağrısı, her state geçişi, her hook çıktısı hash-chained JSONL'e düşer. PII redaction (KVKK/GDPR) default açık.
-- **Brownfield desteği** — mevcut Flutter/Tauri/React projeye `ortim new --from-existing` ile plug-in olur; framework auto-detect, import-graph extraction, scope-aware task generation.
+- **Brownfield desteği** — `ortim init` cwd'deki mevcut Flutter/Tauri/React/Node/Python projesine plug-in olur; manifest auto-detect (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, ...), import-graph extraction, scope-aware task generation.
+- **Project mode (v0.9+)** — git/cargo/claude-code patterned cwd-aware execution. `cd <dir> && ortim status` her şeyi keşfeder.
 
 ## Hızlı başlangıç
 
 ```bash
-# 1) Yeni proje aç (TR brief ile)
-ortim new "Bir görev yönetim CLI'sı istiyorum, Python + SQLite, tek kullanıcı" --name todo-cli
+# Kendi projenin dizinine geç
+cd ~/dev/todo-app
+
+# 1) Workspace init et — cwd'de .ortim/ oluşur, brownfield otomatik tespit
+ortim init "Bir görev yönetim CLI'sı istiyorum, Python + SQLite, tek kullanıcı"
 
 # 2) Babel + Analyst + Stack diyaloğu — PRD'ye doğru ilerleme
-ortim run <project-id>
+ortim run
 
 # 3) PRD'yi gözden geçir, onayla (G1)
-ortim advance <project-id> prd_approved
+ortim advance prd_approved
 
 # 4) Architect RFC çizsin
-ortim run <project-id>
+ortim run
 
 # 5) RFC'yi gözden geçir, onayla (G2)
-ortim advance <project-id> rfc_approved
+ortim advance rfc_approved
 
 # 6) Orchestrator DAG üretsin
-ortim run <project-id>
+ortim run
 
 # 7) DAG'ı sıralı (veya paralel, --parallel) koştur
-ortim run-all <project-id>
+ortim run-all
 
-# Maliyet raporu
-ortim budget <project-id>
+# Maliyet + durum
+ortim budget
+ortim status
+
+# Diğer projeler de var mı?
+ortim ls
 ```
+
+Her komut arg yoksa cwd'deki `.ortim/`'i keşfeder. Pool layout'undaki eski workspace'lerle çalışmak için `--project <id>` flag'i hâlâ var (geriye uyumlu).
 
 Default'lar üretim-için-hazır: dialog mode açık, G1/G2 zorunlu insan onayı, Worker test komutunu önceden yazılı `.ortim.env`'den okur, git branch izolasyonu auto.
 

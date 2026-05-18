@@ -198,39 +198,53 @@ Target: %70+ catch. %50'nin altındaysa Reviewer prompt'unu sertleştir.
 
 ---
 
-## Faz 3 — Distribution & Ops (P2)
+## Faz 3 — Project Mode Pivot + Distribution (P2)
 
-**Hedef:** "Ortim keşfedilebilir + yeni gelen kullanıcı 30 gün sonra hâlâ kullanıyor."
+> **Scope güncellemesi 2026-05-17.** Workspace katmanının yapısal sorunları (flat 196-workspace, repo-içi path, ortim metadata ↔ user code karışıklığı, ID-based komut UX'i) tasarım belgesi sırasında yüzeye çıktı. 3.3'ün taktiksel scope'u "Project Mode pivot"a yükseltildi: cwd-aware execution, `.ortim/` namespace, registry, slug-based ID. Detay: [`./2026-Q2-project-mode.md`](./2026-Q2-project-mode.md).
+>
+> **Sonuç:** 3.1 shipped (2026-05-17). 3.2 / 3.4 / 3.5 Faz 4 başına kaydırıldı. 3.3 yerine **3-PMP (Project Mode Pivot)** 9-milestone'luk paket. v0.8.x → v0.9.0 minor bump (breaking).
+
+**Hedef:** "Ortim profesyonel CLI hissi verir — cwd-aware, git-pattern, implicit context. Distribution & Ops parçaları Faz 4 başına."
 
 **Başarı kriteri (faz çıkışı):**
-- `pip install ortim` çalışıyor
-- Landing page + demo gif + 1 blog post live
-- Workspace cleanup + archive komutları
-- Pydantic schema migration discipline (M1.5 öncesi state.json'lar M3.1 sonrası çalışıyor)
-- Brand consistency (ortim ↔ ai-factory)
+- `cd <user-dir> && ortim init` cwd'de `.ortim/` oluşturur
+- `ortim status` argümansız çalışır (cwd discovery)
+- `ortim ls` global tablo (her yerden)
+- Mevcut 196 pool workspace legacy mode'da çalışmaya devam eder (zero data loss)
+- Pytest 606 → 700+ yeşil, zero regression
+- v0.9.0 PyPI'da
 
 | # | İş | Kaynak | Efor | Bağımlılık | Durum |
 |---|---|---|---|---|---|
-| 3.1 | PyPI publish + brand consistency | §1 + §5 | ~6h | — | ⬜ todo |
-| 3.2 | Pydantic schema migration | §5 ops | ~4h | 1.1 (phase field add) | ⬜ todo |
-| 3.3 | `ortim archive` / `ortim cleanup` | §6 Day-30 | ~3h | — | ⬜ todo |
-| 3.4 | Landing page + demo gif + 1 blog post | §5 marketing | ~8h | 3.1 (ship-ready) | ⬜ todo |
-| 3.5 | Compliance one-pager (KVKK/GDPR) | §6 P1-9 | ~4h | 2.2 (local LLM) | ⬜ todo |
+| 3.1 | PyPI publish + brand consistency | §1 + §5 | ~6h | — | ✅ shipped 2026-05-17 (0.8.0 → 0.8.2) |
+| 3-PMP | **Project Mode Pivot** (M0-M9) | this session | ~35h | 3.1 | ✅ shipped 2026-05-17 (+128 test, 0 regresyon) |
+| ~~3.2~~ | ~~Pydantic schema migration~~ | — | — | — | ➡️ Faz 4'e taşındı |
+| ~~3.3~~ | ~~`ortim archive` / `ortim cleanup`~~ | — | — | — | ✅ 3-PMP M7'ye absorbe edildi |
+| ~~3.4~~ | ~~Landing page + demo gif + blog~~ | — | — | — | ➡️ Faz 4'e taşındı |
+| ~~3.5~~ | ~~KVKK/GDPR one-pager~~ | — | — | — | ➡️ Faz 4'e taşındı |
 
-### 3.1 PyPI publish
+### 3-PMP — Project Mode Pivot
 
-- `name="ortim"` PyPI'da reserve mi? — kontrol et (SQ-1'in cevabı)
-- `pyproject.toml` build target review
-- `ai-factory` → `ortim` rename veya package rename
-- README'de brand consistency: tüm "ai-factory" geçişlerini "ortim" yap, repo URL'i karar (repo adı `ai-factory` kalabilir, package `ortim`)
-- `docker/Dockerfile.draft` (Faz 4 ipliği) — repo'da untracked dursun
+Detaylı tasarım: [`./2026-Q2-project-mode.md`](./2026-Q2-project-mode.md). Özet:
 
-### 3.4 Marketing minimum
+| M# | İş | Efor |
+|---|---|---|
+| M0 | Tasarım belgesi + roadmap pivot | ~1h |
+| M1 | `.ortim/` discovery + path resolver + ProjectStore | ~6h |
+| M2 | `ortim init` komutu (greenfield + brownfield auto-detect) | ~3h |
+| M3 | Read komutlarını cwd-aware yap | ~4h |
+| M4 | Mutating komutları cwd-aware yap | ~6h |
+| M5 | Registry + `ortim ls` | ~3h |
+| M6 | Workspace subcommand + kind field | ~2h |
+| M7 | archive / unarchive / cleanup / doctor | ~3h |
+| M8 | Pool legacy + opsiyonel migrate komutu | ~3h |
+| M9 | Test + dokümantasyon + 0.9.0 release | ~4h |
 
-- `ortim.dev` veya `ortim.io` domain (kontrol edilmeli — SQ-3 cevabı)
-- Landing page (basit, tek sayfa): pitch + 30sn demo gif + install komutu + GitHub link
-- 1 blog post: "Why we built Ortim — deterministic state machine for AI dev" (1500-2000 kelime)
-- `asciinema` veya GIF ile 30sn demo
+**Geriye uyum:** Pool layout korunur, legacy mode'da yaşar. Mevcut 196 workspace dokunulmaz. Migration opsiyonel (`ortim workspace migrate <id> --to <path>`). v1.0'da pool mode kaldırılır.
+
+### 3.1 PyPI publish — SHIPPED
+
+R1–R6 rename + 0.8.0/0.8.1/0.8.2 patch releases. Detay: project memory.
 
 ---
 
@@ -282,6 +296,9 @@ Plan değişiklikleri buraya append-only yazılır.
 | 2026-05-16 | **Faz 1.3 shipped** — onboarding tutorial | `docs/tutorial/getting-started.md` (457 satır, 7 bölüm: kurulum/doctor/demo/gerçek-proje/trust-calibration/sorunlar/sonra). TR primary + EN CLI komutları. Konsept açıklaması + komut cheatsheet. |
 | 2026-05-16 | **Faz 1.4 shipped** — failure recovery cookbook | `docs/runbook/failure-recovery.md` (402 satır, 9 senaryo: AWAITING_HITL/3-strike/G7/migration/stack-drift/sandbox/state-error/reset). Her senaryo için belirti+sebep+çözüm adımları. |
 | 2026-05-16 | **Faz 1.5 shipped** — Worker security gate | `TaskSpec.sensitive_categories` (auth/pii/payment) + `runtime.security.sensitive_patterns` deterministic detector (regex word-boundary, KVKK/GDPR/HIPAA + Türkçe pattern'lar dahil) + runner gate (reviewer approval sonrası sensitive task → AWAITING_HITL) + `ortim execute --human-reviewed` bypass + 3 skill (`skills/security/{auth,pii,payment}-review-checklist.md`). +13 test, pytest 521→534. Smoke `a275c03953ec` (Stripe + JWT + email auth brief): 12/16 task isabetli tagged. Faz 1 P0 set complete. |
+| 2026-05-17 | **3.1 shipped** — PyPI publish + brand rename | R1-R6 rename plan tek session'da; 0.8.0 → 0.8.1 → 0.8.2 PyPI'da canlı; GitHub presence + folder rename. Detay: project memory `project_ai_software_factory.md` 2026-05-17 entry. |
+| 2026-05-17 | **Faz 3 scope pivot** — "Distribution & Ops" → "Project Mode Pivot + Distribution" | Faz 3.3 (archive/cleanup) tasarımı sırasında workspace katmanının yapısal sorunları (flat 196-workspace pool, repo-içi path, metadata↔code karışıklığı, ID-arg-zorunlu UX) yüzeye çıktı. Path 1 (tam pivot) seçildi: cwd-aware execution + `.ortim/` namespace + registry + slug ID. 3.2/3.4/3.5 Faz 4 başına taşındı. v0.9.0 minor bump (breaking). Detay: [`./2026-Q2-project-mode.md`](./2026-Q2-project-mode.md). |
+| 2026-05-17 | **3-PMP shipped** — Project Mode pivot tek session'da tamamlandı | M0-M9 hepsi ship. Workspace katmanı yeniden inşa edildi: `ortim/workspace/{resolver,store,init,registry,lifecycle}.py` + 5 yeni CLI komut grubu (`init`, `ls`, `use`, `workspace ...` subnamespace). Mevcut 30+ CLI komutu cwd-aware. Project.save / Project.workspace_path mode-aware (PrivateAttr `_metadata_dir`). Audit log per-project (`AUDIT_LOG_PATH` env shim). Pool layout %100 geriye uyumlu (kayıt-dışı pool için fallback, `--project <id>` flag). Pytest 606 → 734 (+128 test, 0 regresyon). CHANGELOG 0.9.0 entry, README quick start, version bump shipped. PyPI publish kullanıcı action olarak kaldı (`python -m build && twine upload dist/*`). |
 
 ---
 

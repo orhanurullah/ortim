@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from ortim.orchestrator.state_machine import (
     HITL_GATES,
@@ -59,6 +59,25 @@ class Project(BaseModel):
     app_class: str = "web"
     source_path: str | None = None  # absolute path to user's repo, when brownfield
 
+    # 3-PMP M6 — workspace lifecycle classification.
+    #   active       — real project, default
+    #   demo         — `ortim demo` output
+    #   scratch      — exploratory / smoke run, safe to cleanup
+    #   proof_point  — preserved baseline used for empirical comparison
+    #   baseline     — frozen reference (e.g. `*-baseline-pre-*`)
+    #   legacy       — pool workspace registered post-migration
+    # `archived_at` is the (UTC ISO) timestamp set by `ortim workspace archive`;
+    # presence != None means the workspace is hidden from default listings and
+    # blocked for mutating commands.
+    kind: str = "active"
+    archived_at: str | None = None
+
+    # Project Mode (v0.9+) — when a workspace was loaded via `ProjectStore`,
+    # the resolver binds this to the resolved metadata dir (`<path>/.ortim/`).
+    # save() honors it over the legacy pool layout so commands that call
+    # `project.save(WORKSPACE_ROOT)` keep working in both modes.
+    _metadata_dir: Path | None = PrivateAttr(default=None)
+
     @staticmethod
     def workspace_path(
         project_id: str,
@@ -74,6 +93,29 @@ class Project(BaseModel):
             return root / project_id
         return root / tenant_id / project_id
 
+    def current_metadata_dir(self, root: Path) -> Path:
+        """Where this project writes its artifacts (PRD/RFC/intent/audit).
+
+        Project mode (post-resolve) → `<user-dir>/.ortim/`
+        Pool legacy                  → `<root>/<id>/`
+
+        The Project's `_metadata_dir` is set by the resolver after load;
+        callers passing the legacy `root` get the pool path automatically
+        when the project was loaded in pool mode.
+        """
+        if self._metadata_dir is not None:
+            return self._metadata_dir
+        return self.workspace_path(self.id, root, self.tenant_id)
+
+    def bind_metadata_dir(self, metadata_dir: Path) -> None:
+        """Attach a project-mode metadata directory to this in-memory Project.
+
+        Called by `ProjectStore.load` to thread the resolved layout into
+        downstream `save(root)` calls without changing their signature.
+        Tests can leave this unset; pool layout is the default fallback.
+        """
+        self._metadata_dir = metadata_dir
+
     @classmethod
     def load(
         cls,
@@ -85,7 +127,18 @@ class Project(BaseModel):
         return cls.model_validate_json(path.read_text(encoding="utf-8"))
 
     def save(self, root: Path, tenant_id: str | None = None) -> None:
-        """Persist state.json. If `tenant_id` is omitted, use `self.tenant_id`."""
+        """Persist state.json.
+
+        Project mode (when `_metadata_dir` is bound) writes
+        `<metadata_dir>/state.json` — `root` is ignored. Pool mode keeps the
+        legacy `<root>/<id>/state.json` location.
+        """
+        if self._metadata_dir is not None:
+            self._metadata_dir.mkdir(parents=True, exist_ok=True)
+            (self._metadata_dir / "state.json").write_text(
+                self.model_dump_json(indent=2), encoding="utf-8"
+            )
+            return
         effective = tenant_id if tenant_id is not None else self.tenant_id
         ws = self.workspace_path(self.id, root, effective)
         ws.mkdir(parents=True, exist_ok=True)

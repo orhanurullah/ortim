@@ -39,7 +39,7 @@ from ortim.orchestrator import (
 
 load_dotenv()
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.8.2)")
+app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.0)")
 console = Console()
 
 # Deprecation: the `ai-factory` CLI alias is kept for backwards
@@ -59,6 +59,79 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 def _ensure_workspace_root() -> None:
     WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_project(arg: str | None):
+    """Resolve a workspace + load its Project for a CLI command.
+
+    Returns `(project, store, location)`. Side effect: sets
+    `AUDIT_LOG_PATH` env var to the resolved per-workspace audit log so
+    downstream `AuditLogger()` constructions (in helpers, agents, hooks)
+    automatically write to the right place — no need to thread an audit
+    instance through every internal function.
+
+    Resolution order:
+      1. If `arg` is given AND `<WORKSPACE_ROOT>/<arg>/state.json` exists →
+         load as pool-mode legacy workspace (backward-compat for existing
+         tests + scripts that pass UUID-style ids).
+      2. Else delegate to `resolve_workspace(arg, cwd)` — cwd parent walk
+         for project-mode, registry lookup for explicit args.
+
+    Exits cleanly (typer.Exit) with a friendly message on resolution
+    failure or missing state.json — the caller can assume a valid Project.
+    """
+    from ortim.workspace import (
+        ProjectStore,
+        WorkspaceLocation,
+        WorkspaceMode,
+        WorkspaceNotFound,
+        resolve_workspace,
+    )
+
+    if arg is not None:
+        pool_candidate = WORKSPACE_ROOT / arg
+        if (pool_candidate / "state.json").exists():
+            location = WorkspaceLocation(
+                path=pool_candidate, mode=WorkspaceMode.POOL, id=arg
+            )
+            store = ProjectStore(location)
+            project = store.load()
+            os.environ["AUDIT_LOG_PATH"] = str(store.audit_log_path())
+            return project, store, location
+
+    try:
+        location = resolve_workspace(arg=arg)
+    except WorkspaceNotFound as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    store = ProjectStore(location)
+    try:
+        project = store.load()
+    except FileNotFoundError:
+        console.print(
+            f"[red]Workspace state not found at {location.state_file}[/red]"
+        )
+        raise typer.Exit(1)
+    os.environ["AUDIT_LOG_PATH"] = str(store.audit_log_path())
+    return project, store, location
+
+
+def _block_if_archived(project, action: str = "modify") -> None:
+    """Refuse mutating actions on archived workspaces.
+
+    Read-only commands (status / ls / show / inspect / gates / extensions /
+    tasks) work fine on archived workspaces — they're a viewing snapshot.
+    Anything that transitions state or executes agents should bounce.
+    """
+    if project.archived_at is not None:
+        console.print(
+            f"[red]Workspace {project.id} is archived "
+            f"(at {project.archived_at[:19]}).[/red]\n"
+            f"Cannot {action}. Run "
+            f"[cyan]ortim workspace unarchive {project.id}[/cyan] first."
+        )
+        raise typer.Exit(1)
 
 
 def _load_codebase_summary(project: "Project", workspace: Path):
@@ -82,6 +155,101 @@ def _load_codebase_summary(project: "Project", workspace: Path):
 
 
 @app.command()
+def init(
+    brief: str = typer.Argument(..., help="Türkçe proje özeti"),
+    name: str = typer.Option(
+        None,
+        "--name",
+        help="Proje kısa adı (default: cwd dizin adı).",
+    ),
+    greenfield: bool = typer.Option(
+        False,
+        "--greenfield",
+        help="Brownfield otomatik tespitini zorla atla (boş dizin gibi davran).",
+    ),
+    brownfield: bool = typer.Option(
+        False,
+        "--brownfield",
+        help="Brownfield modu zorla (manifest dosyası yoksa bile codebase taranır).",
+    ),
+) -> None:
+    """Çalışılan dizinde Ortim projesi başlat (.ortim/ oluşturur).
+
+    Manifest dosyası (package.json, pyproject.toml, Cargo.toml, ...) varsa
+    brownfield mode; yoksa greenfield mode otomatik seçilir. Manual override
+    için --greenfield veya --brownfield kullan.
+
+    Önce: `cd ~/dev/todo-app && ortim init "task manager"`
+    Sonra: `ortim status`, `ortim run`, `ortim run-all` — hepsi cwd'den keşfeder.
+    """
+    from ortim.workspace import InitError, init_project
+
+    if greenfield and brownfield:
+        console.print(
+            "[red]--greenfield ve --brownfield aynı anda kullanılamaz.[/red]"
+        )
+        raise typer.Exit(1)
+
+    force = True if brownfield else (False if greenfield else None)
+    cwd = Path.cwd()
+
+    try:
+        project, location, is_brownfield = init_project(
+            cwd=cwd,
+            brief=brief,
+            name=name,
+            force_brownfield=force,
+        )
+    except InitError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+
+    from ortim.audit import AuditLogger
+    from ortim.workspace import register_workspace
+
+    audit = AuditLogger(path=location.metadata_dir / "audit.jsonl")
+    audit.log(
+        "project_init",
+        project_id=project.id,
+        name=project.name,
+        is_brownfield=is_brownfield,
+        app_class=project.app_class,
+        path=str(location.path),
+    )
+
+    # Register in user-level index so `ortim ls` and arg-based lookups find
+    # this workspace from anywhere. Also marks it as `current`. The init
+    # location carries no id (resolver doesn't know it yet); we substitute
+    # the project's freshly-minted id so the entry is keyed correctly.
+    from ortim.workspace import WorkspaceLocation as _WL
+
+    register_workspace(
+        _WL(path=location.path, mode=location.mode, id=project.id),
+        name=project.name,
+        state=project.state.value,
+    )
+
+    mode_label = "brownfield" if is_brownfield else "greenfield"
+    console.print(
+        f"[green]Initialized[/green] [bold]{project.id}[/bold] "
+        f"([cyan]{project.name}[/cyan], {mode_label})"
+    )
+    console.print(f"Path: [cyan]{location.path}[/cyan]")
+    console.print(f"State: [cyan]{project.state.value}[/cyan]")
+    if is_brownfield:
+        console.print(f"App class: [cyan]{project.app_class}[/cyan]")
+        console.print(
+            f"\nNext: [cyan]ortim run[/cyan] (Architect skips Babel, "
+            "drafts PRD from existing code)."
+        )
+    else:
+        console.print(
+            "\nNext: [cyan]ortim run[/cyan] "
+            "(Babel + Analyst; ANTHROPIC_API_KEY veya DEEPSEEK_API_KEY gerekir)"
+        )
+
+
+@app.command()
 def new(
     brief: str = typer.Argument(..., help="Türkçe proje özeti"),
     name: str = typer.Option("untitled", help="Proje kısa adı"),
@@ -95,7 +263,12 @@ def new(
         help="--from-existing için: symlink (hızlı, dev-mode gerekli) veya copy",
     ),
 ) -> None:
-    """Yeni proje aç (greenfield veya --from-existing ile brownfield)."""
+    """[DEPRECATED] Pool layout'unda yeni proje aç. `ortim init` kullan."""
+    print(
+        "WARNING: `ortim new` is deprecated; use `ortim init \"<brief>\"` from "
+        "inside your project directory. Pool layout will be removed in v1.0.",
+        file=sys.stderr,
+    )
     _ensure_workspace_root()
 
     if from_existing is not None:
@@ -142,19 +315,22 @@ def new(
 
 
 @app.command()
-def status(project_id: str) -> None:
-    """Proje detayını göster."""
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+def status(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir (project mode).",
+    ),
+) -> None:
+    """Proje detayını göster (arg yoksa cwd'den keşfeder)."""
+    project, _, location = _resolve_project(project_id)
 
     table = Table(title=f"Project {project.id}")
     table.add_column("Field", style="cyan")
     table.add_column("Value")
     table.add_row("Name", project.name)
     table.add_row("State", project.state.value)
+    table.add_row("Path", str(location.path))
+    table.add_row("Mode", location.mode.value)
     table.add_row("Created", project.created_at)
     table.add_row("History", str(len(project.history)))
     if gate := project.awaiting_human():
@@ -180,31 +356,31 @@ def status(project_id: str) -> None:
 
 
 @app.command()
-def inspect(project_id: str) -> None:
+def inspect(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
     """Brownfield projenin codebase scan özetini göster."""
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
     if not project.is_brownfield:
         console.print(
-            f"[yellow]{project_id} is not a brownfield project (no codebase scan).[/yellow]"
+            f"[yellow]{project.id} is not a brownfield project (no codebase scan).[/yellow]"
         )
         return
 
-    ws = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
-    cache = ws / ".cache" / "codebase.json"
+    cache = store.metadata_dir / ".cache" / "codebase.json"
     if not cache.exists():
         console.print(
-            f"[yellow]No codebase.json at {cache}. Try `ortim rescan {project_id}`.[/yellow]"
+            f"[yellow]No codebase.json at {cache}. Try `ortim rescan`.[/yellow]"
         )
         raise typer.Exit(1)
 
     from ortim.codebase import CodebaseSummary
 
     summary = CodebaseSummary.model_validate_json(cache.read_text(encoding="utf-8"))
-    table = Table(title=f"Codebase summary — {project_id}")
+    table = Table(title=f"Codebase summary — {project.id}")
     table.add_column("Field", style="cyan")
     table.add_column("Value")
     table.add_row("Source", project.source_path or "?")
@@ -230,24 +406,32 @@ def inspect(project_id: str) -> None:
 
 
 @app.command()
-def rescan(project_id: str) -> None:
+def rescan(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
     """Brownfield projenin codebase summary'sini yeniden tara."""
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    from ortim.codebase import scan_codebase
+    from ortim.workspace import WorkspaceMode
+
+    project, store, location = _resolve_project(project_id)
     if not project.is_brownfield:
         console.print(
-            f"[yellow]{project_id} is not a brownfield project; nothing to rescan.[/yellow]"
+            f"[yellow]{project.id} is not a brownfield project; nothing to rescan.[/yellow]"
         )
         raise typer.Exit(1)
 
-    from ortim.codebase import scan_codebase
+    # Pool layout puts the user's code in `<workspace>/source/`; project
+    # mode has it at the workspace root itself. Picking the right scan
+    # target keeps the two layouts on the same rescan flow.
+    if location.mode is WorkspaceMode.PROJECT:
+        source = location.path
+    else:
+        source = location.path / "source"
 
-    ws = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
-    source = ws / "source"
-    cache_dir = ws / ".cache"
+    cache_dir = store.metadata_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_path = cache_dir / "codebase.json"
     summary = scan_codebase(source, cache_path=cache_path)
@@ -260,32 +444,34 @@ def rescan(project_id: str) -> None:
 
 @app.command()
 def baseline(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     recapture: bool = typer.Option(False, "--recapture", help="Test suite'i yeniden koş"),
     override: int = typer.Option(
         -1, "--override", help="Manuel passing count override (parser yetmediğinde)"
     ),
 ) -> None:
     """Brownfield projenin test baseline'ını göster veya yeniden yakala."""
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-    if not project.is_brownfield:
-        console.print(f"[yellow]{project_id} is not a brownfield project.[/yellow]")
-        raise typer.Exit(1)
-
     from ortim.codebase import (
         TestBaseline,
         capture_baseline,
         load_baseline,
         write_baseline,
     )
+    from ortim.workspace import WorkspaceMode
 
-    ws = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
-    source = ws / "source"
-    cache_dir = ws / ".cache"
+    project, store, location = _resolve_project(project_id)
+    if not project.is_brownfield:
+        console.print(f"[yellow]{project.id} is not a brownfield project.[/yellow]")
+        raise typer.Exit(1)
+
+    if location.mode is WorkspaceMode.PROJECT:
+        source = location.path
+    else:
+        source = location.path / "source"
+    cache_dir = store.metadata_dir / ".cache"
 
     if recapture:
         try:
@@ -327,7 +513,7 @@ def baseline(
             "Run with --recapture to create one.[/yellow]"
         )
         return
-    table = Table(title=f"Baseline — {project_id}")
+    table = Table(title=f"Baseline — {project.id}")
     table.add_column("Field", style="cyan")
     table.add_column("Value")
     table.add_row("Cmd", existing.cmd)
@@ -338,14 +524,12 @@ def baseline(
     console.print(table)
 
 
-@app.command("list-projects")
-def list_projects() -> None:
-    """Workspace altındaki projeleri listele."""
-    if not WORKSPACE_ROOT.exists():
-        console.print("[yellow]No workspaces yet.[/yellow]")
-        return
-
+def _list_pool_projects() -> list[Project]:
+    """Scan WORKSPACE_ROOT for pool-mode workspaces. Used by `ls` until M5
+    introduces the registry-backed lookup."""
     projects: list[Project] = []
+    if not WORKSPACE_ROOT.exists():
+        return projects
     for path in WORKSPACE_ROOT.iterdir():
         if not path.is_dir():
             continue
@@ -355,20 +539,168 @@ def list_projects() -> None:
             projects.append(Project.load(path.name, WORKSPACE_ROOT))
         except Exception as e:
             console.print(f"[red]Failed to load {path.name}:[/red] {e}")
+    return projects
 
-    if not projects:
-        console.print("[yellow]No projects.[/yellow]")
+
+@app.command()
+def ls(
+    prune: bool = typer.Option(
+        False,
+        "--prune",
+        help="Registry'den silinmiş workspace entry'lerini temizle.",
+    ),
+    include_pool: bool = typer.Option(
+        True,
+        "--include-pool/--no-pool",
+        help="Pool layout'undaki kayıt-dışı workspace'leri de listele.",
+    ),
+    include_archived: bool = typer.Option(
+        False,
+        "--include-archived/--no-archived",
+        help="Archive'lanmış workspace'leri de göster (default: gizli).",
+    ),
+) -> None:
+    """Bilinen tüm workspace'leri listele (registry + pool layout).
+
+    Source: `~/.ortim/registry.json` (project-mode entries) + opsiyonel
+    `WORKSPACE_ROOT/` taraması (pool legacy). Aktif workspace `*` ile
+    işaretlenir.
+    """
+    from ortim.workspace import Registry, scan_pool_workspaces
+
+    reg = Registry.load()
+
+    if prune:
+        removed = reg.prune_missing()
+        if removed:
+            reg.save()
+            console.print(
+                f"[yellow]Pruned {len(removed)} stale entrie(s):[/yellow] "
+                + ", ".join(removed)
+            )
+
+    # Pool workspaces that are NOT in the registry (legacy untracked).
+    pool_ids_in_registry = {
+        e.id for e in reg.workspaces.values() if e.mode == "pool"
+    }
+    pool_extras: list[tuple[str, str, str, str]] = []  # id, name, state, path
+    if include_pool:
+        for pool_id, ws_path in scan_pool_workspaces(WORKSPACE_ROOT):
+            if pool_id in pool_ids_in_registry:
+                continue
+            try:
+                proj = Project.load(pool_id, WORKSPACE_ROOT)
+                pool_extras.append(
+                    (proj.id, proj.name, proj.state.value, str(ws_path))
+                )
+            except Exception:
+                continue
+
+    if not reg.workspaces and not pool_extras:
+        console.print("[yellow]No workspaces yet.[/yellow]")
+        console.print(
+            "Run [cyan]ortim init \"<brief>\"[/cyan] inside a project directory to start."
+        )
         return
 
-    table = Table(title="Projects")
-    table.add_column("ID")
+    table = Table(title="Workspaces")
+    table.add_column(" ", style="green", width=1)  # current marker
+    table.add_column("ID", style="cyan")
     table.add_column("Name")
     table.add_column("State")
-    table.add_column("HITL")
-    for project in projects:
-        gate = project.awaiting_human() or ""
-        table.add_row(project.id, project.name, project.state.value, gate)
+    table.add_column("Mode")
+    table.add_column("Last active", style="dim")
+    table.add_column("Path", style="dim")
+
+    archived_hidden = 0
+    for entry in reg.entries():
+        # Resolve archived flag from the live state.json — registry only
+        # caches `state`, not `archived_at`.
+        is_archived = False
+        try:
+            from ortim.workspace import ProjectStore, WorkspaceLocation, WorkspaceMode
+            loc = WorkspaceLocation(
+                path=Path(entry.path),
+                mode=WorkspaceMode(entry.mode),
+                id=entry.id,
+            )
+            store = ProjectStore(loc)
+            if store.exists():
+                is_archived = store.load().archived_at is not None
+        except Exception:
+            pass
+
+        if is_archived and not include_archived:
+            archived_hidden += 1
+            continue
+
+        marker = "*" if entry.id == reg.current else ""
+        state_display = entry.state or ""
+        if is_archived:
+            state_display += " [dim](archived)[/dim]"
+        table.add_row(
+            marker,
+            entry.id,
+            entry.name,
+            state_display,
+            entry.mode,
+            entry.last_active[:19] if entry.last_active else "",
+            entry.path,
+        )
+
+    for pool_id, name, state, path in pool_extras:
+        table.add_row("", pool_id, name, state, "pool (untracked)", "", path)
+
     console.print(table)
+    if archived_hidden:
+        console.print(
+            f"\n[dim]{archived_hidden} archived workspace(s) hidden. "
+            "Use [cyan]ortim ls --include-archived[/cyan] to see them.[/dim]"
+        )
+    if pool_extras:
+        console.print(
+            f"\n[dim]{len(pool_extras)} pool workspace(s) not in registry. "
+            "`ortim workspace migrate <id>` to lift them into project mode.[/dim]"
+        )
+
+
+@app.command()
+def use(
+    workspace: str = typer.Argument(..., help="Workspace ID veya name"),
+) -> None:
+    """Active workspace'i (registry `current` pointer) belirle.
+
+    Sonraki `ortim status` / `ortim run` çağrıları cwd'de `.ortim/`
+    bulamazsa bu pointer'ı kullanır. Git'in `HEAD` analoğu.
+    """
+    from ortim.workspace import Registry
+
+    reg = Registry.load()
+    entry = reg.get(workspace)
+    if entry is None:
+        console.print(
+            f"[red]Workspace '{workspace}' not in registry.[/red] "
+            "Run [cyan]ortim ls[/cyan] to see registered workspaces."
+        )
+        raise typer.Exit(1)
+    reg.current = entry.id
+    reg.save()
+    console.print(
+        f"[green]Active workspace:[/green] [cyan]{entry.id}[/cyan] "
+        f"([dim]{entry.name}[/dim])"
+    )
+    console.print(f"Path: {entry.path}")
+
+
+@app.command("list-projects")
+def list_projects() -> None:
+    """[DEPRECATED] `ortim ls` kullan. Pool layout'unu tarar."""
+    print(
+        "WARNING: `ortim list-projects` is deprecated; use `ortim ls` instead. "
+        "Will be removed in v1.0.",
+        file=sys.stderr,
+    )
+    ls()
 
 
 # Semantic verb aliases for HITL approvals. Each alias resolves to a real
@@ -393,18 +725,20 @@ _APPROVAL_ALIASES: dict[str, tuple[ProjectState, str]] = {
 
 @app.command()
 def advance(
-    project_id: str,
     target: str = typer.Argument(..., help="Hedef state veya alias (intake, prd_drafting, schema_approved, ...)"),
     note: str = typer.Option("", help="State değişikliği için not"),
+    project_id: str = typer.Option(
+        None,
+        "--project",
+        "-p",
+        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+    ),
 ) -> None:
     """Proje state'ini manuel ilerlet (HITL onayları + acil durum)."""
     from ortim.audit import AuditLogger
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
+    _block_if_archived(project, action="advance")
 
     alias = _APPROVAL_ALIASES.get(target)
     if alias is not None:
@@ -427,12 +761,12 @@ def advance(
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    project.save(WORKSPACE_ROOT)
+    store.save(project)
     if audit_event:
         # Surface the alias intent so `ortim retro` and downstream audit
         # tooling can distinguish "schema approval" from a bare state
         # bump that happened to land on EXECUTING.
-        AuditLogger().log(
+        AuditLogger(path=store.audit_log_path()).log(
             audit_event,
             project_id=project.id,
             note=note,
@@ -444,7 +778,12 @@ def advance(
 
 
 @app.command()
-def gates(project_id: str) -> None:
+def gates(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
     """Open HITL gates for a project (G1–G7)."""
     from ortim.budget import BudgetTracker
     from ortim.orchestrator import (
@@ -454,11 +793,7 @@ def gates(project_id: str) -> None:
         detect_schema_tasks,
     )
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
 
     table = Table(title=f"Gates for {project.id}")
     table.add_column("Gate", style="cyan")
@@ -470,10 +805,8 @@ def gates(project_id: str) -> None:
     if gate_label:
         table.add_row(gate_label, "[yellow]OPEN[/yellow]", "current project state")
 
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
-
     # G3 — schema (DAG-derived, advisory if not in SCHEMA_AWAITING_APPROVAL)
-    dag_path = workspace / "task_dag.json"
+    dag_path = store.artifact_path("task_dag.json")
     if dag_path.exists():
         dag = TaskDAG.model_validate_json(dag_path.read_text(encoding="utf-8"))
         schema = detect_schema_tasks(dag)
@@ -525,7 +858,10 @@ def states() -> None:
 
 @app.command()
 def run(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     step: str = typer.Option(
         "auto", help="babel | analyst | architect | orchestrator | auto"
     ),
@@ -537,15 +873,12 @@ def run(
     from ortim.llm import client_for
     from ortim.memory import MemoryLoader
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
+    _block_if_archived(project, action="run agents")
 
     memory = MemoryLoader(REPO_ROOT)
-    audit = AuditLogger()
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
+    audit = AuditLogger(path=store.audit_log_path())
+    workspace = store.metadata_dir
 
     intent_path = workspace / "intent.json"
     babel_resumable = (
@@ -1013,20 +1346,16 @@ _DIALOG_STATE_ALIASES = {
 }
 
 
-def _dialog_setup(project_id: str):
+def _dialog_setup(project_id: str | None):
     """Shared bootstrap for the dialog CLI commands: load project,
     workspace, audit, and memory. Returns a tuple of those plus an
     early-exit flag if the state is not a dialog state."""
     from ortim.audit import AuditLogger
     from ortim.memory import MemoryLoader
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
-    return project, workspace, AuditLogger(), MemoryLoader(REPO_ROOT)
+    project, store, _ = _resolve_project(project_id)
+    workspace = store.metadata_dir
+    return project, workspace, AuditLogger(path=store.audit_log_path()), MemoryLoader(REPO_ROOT)
 
 
 def _require_dialog_state(project) -> None:
@@ -1047,12 +1376,17 @@ def _require_dialog_state(project) -> None:
 
 @app.command()
 def refine(
-    project_id: str,
     feedback: str = typer.Argument(
         ..., help="Geri bildirim. Örn: 'add tagging to must-have features'"
     ),
     force: bool = typer.Option(
         False, "--force", help="Turn cap aşıldıysa bilinçli devam et."
+    ),
+    project_id: str = typer.Option(
+        None,
+        "--project",
+        "-p",
+        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
     ),
 ) -> None:
     """Aktif dialog state'inin agent'ını feedback ile yeniden çağır."""
@@ -1183,7 +1517,10 @@ def refine(
 
 @app.command()
 def show(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     artifact: str = typer.Option(
         "current",
         "--artifact",
@@ -1194,12 +1531,8 @@ def show(
     """Aktif (ya da seçili) dialog artifact'ini konsola bas."""
     from ortim.dialog import load_intent_md, load_locked_stack, load_prd_md
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
+    project, store, _ = _resolve_project(project_id)
+    workspace = store.metadata_dir
 
     requested = artifact.lower()
     if requested == "current":
@@ -1244,7 +1577,10 @@ def show(
 
 @app.command()
 def lock(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Confirm prompts'ı atla."),
 ) -> None:
     """Aktif dialog state'i kilitle, bir sonrakine geç. Diff göster, onay al,
@@ -1804,8 +2140,13 @@ def _list_extensions(workspace: Path) -> list[tuple[int, str]]:
 
 @app.command("extend")
 def extend_cmd(
-    project_id: str = typer.Argument(..., help="Mevcut DONE projenin ID'si"),
     brief: str = typer.Argument(..., help="Yeni feature için Türkçe brief"),
+    project_id: str = typer.Option(
+        None,
+        "--project",
+        "-p",
+        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+    ),
 ) -> None:
     """M3.1 — DONE projeye yeni bir feature delta'sı ekle.
 
@@ -1817,11 +2158,8 @@ def extend_cmd(
     from ortim.llm import client_for
     from ortim.memory import MemoryLoader
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
+    _block_if_archived(project, action="extend")
 
     if project.state != ProjectState.DONE:
         console.print(
@@ -1831,8 +2169,8 @@ def extend_cmd(
         raise typer.Exit(1)
 
     memory = MemoryLoader(REPO_ROOT)
-    audit = AuditLogger()
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
+    audit = AuditLogger(path=store.audit_log_path())
+    workspace = store.metadata_dir
 
     try:
         babel_llm = client_for("babel")
@@ -1881,26 +2219,23 @@ def extend_cmd(
 
 @app.command("extensions")
 def extensions_cmd(
-    project_id: str = typer.Argument(..., help="Project ID"),
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
 ) -> None:
     """M3.1 — Projenin extend cycle geçmişini listele (PRD.md'den okur)."""
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
-    rows = _list_extensions(workspace)
+    project, store, _ = _resolve_project(project_id)
+    rows = _list_extensions(store.metadata_dir)
     if not rows:
         console.print(
-            f"No extensions yet for [bold]{project_id}[/bold]. Use "
-            f"[cyan]ortim extend {project_id} \"<feature brief>\"[/cyan] "
+            f"No extensions yet for [bold]{project.id}[/bold]. Use "
+            f"[cyan]ortim extend \"<feature brief>\"[/cyan] "
             "to add one (project must be DONE)."
         )
         return
 
-    table = Table(title=f"Extensions for {project_id}")
+    table = Table(title=f"Extensions for {project.id}")
     table.add_column("Cycle", style="cyan")
     table.add_column("Header line")
     for cycle, header in rows:
@@ -1973,7 +2308,10 @@ def _lock_prd(project, workspace, audit, memory) -> None:
 
 @app.command()
 def scope(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     show: bool = typer.Option(
         False, "--show", help="Sadece mevcut scope.json'u tabloda göster, edit etme."
     ),
@@ -2001,12 +2339,8 @@ def scope(
     """
     from ortim.scope import load_scope, save_scope, scope_path, suggest_initial_scope
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
+    project, store, _ = _resolve_project(project_id)
+    workspace = store.metadata_dir
 
     if project.state != ProjectState.MVP_SCOPE_LOCKING:
         console.print(
@@ -2157,6 +2491,290 @@ def scope(
 skill_app = typer.Typer(help="M3 skills inspection.", no_args_is_help=True)
 app.add_typer(skill_app, name="skill")
 
+# 3-PMP M6 — `ortim workspace` subcommand namespace.
+# Top-level commands (`ls`, `use`, `list-projects`) keep their place for
+# backwards compatibility with v0.8.x shell history and docs; the
+# `workspace` namespace is the forward-looking organization that
+# `archive`, `unarchive`, `cleanup`, `doctor`, `migrate` will live under.
+workspace_app = typer.Typer(
+    help="Workspace lifecycle: list, archive, cleanup, migrate, doctor.",
+    no_args_is_help=True,
+)
+app.add_typer(workspace_app, name="workspace")
+
+
+@workspace_app.command("list")
+def workspace_list(
+    prune: bool = typer.Option(
+        False, "--prune", help="Stale registry entry'lerini temizle."
+    ),
+    include_pool: bool = typer.Option(
+        True, "--include-pool/--no-pool",
+        help="Pool layout'undaki kayıt-dışı workspace'leri de göster.",
+    ),
+    include_archived: bool = typer.Option(
+        False, "--include-archived/--no-archived",
+        help="Archive'lanmış workspace'leri de göster.",
+    ),
+) -> None:
+    """Alias for top-level `ortim ls`."""
+    ls(prune=prune, include_pool=include_pool, include_archived=include_archived)
+
+
+@workspace_app.command("use")
+def workspace_use(
+    workspace: str = typer.Argument(..., help="Workspace ID veya name"),
+) -> None:
+    """Alias for top-level `ortim use`."""
+    use(workspace=workspace)
+
+
+@workspace_app.command("show")
+def workspace_show(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
+    """Workspace meta bilgisi (status'a alias; registry + state.json)."""
+    status(project_id=project_id)
+
+
+@workspace_app.command("archive")
+def workspace_archive(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
+    """Workspace'i archived olarak işaretle. Listeden gizlenir, mutating
+    komutlar reddeder, ama dosya yapısı dokunulmaz."""
+    from ortim.audit import AuditLogger
+    from ortim.workspace import archive_workspace
+
+    project, store, _ = _resolve_project(project_id)
+    if project.archived_at is not None:
+        console.print(
+            f"[yellow]{project.id} is already archived "
+            f"({project.archived_at[:19]}).[/yellow]"
+        )
+        return
+
+    archive_workspace(store, project)
+    AuditLogger(path=store.audit_log_path()).log(
+        "workspace_archived",
+        project_id=project.id,
+        archived_at=project.archived_at,
+    )
+    console.print(
+        f"[green]Archived[/green] [cyan]{project.id}[/cyan] "
+        f"([dim]{project.name}[/dim]) at {project.archived_at[:19]}"
+    )
+
+
+@workspace_app.command("unarchive")
+def workspace_unarchive(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
+    """Workspace'in archived flag'ini temizle."""
+    from ortim.audit import AuditLogger
+    from ortim.workspace import unarchive_workspace
+
+    project, store, _ = _resolve_project(project_id)
+    if project.archived_at is None:
+        console.print(f"[yellow]{project.id} is not archived.[/yellow]")
+        return
+
+    unarchive_workspace(store, project)
+    AuditLogger(path=store.audit_log_path()).log(
+        "workspace_unarchived", project_id=project.id
+    )
+    console.print(
+        f"[green]Unarchived[/green] [cyan]{project.id}[/cyan] "
+        f"([dim]{project.name}[/dim])"
+    )
+
+
+@workspace_app.command("cleanup")
+def workspace_cleanup(
+    older_than: int = typer.Option(
+        ...,
+        "--older-than",
+        help="Son aktiviteden bu kadar gün geçenler hedef alınır (zorunlu).",
+    ),
+    archived_only: bool = typer.Option(
+        True,
+        "--archived-only/--include-active",
+        help="Default: sadece archive'lanmış workspace'ler. --include-active "
+        "ile aktif workspace'leri de silebilirsin (riskli).",
+    ),
+    state_filter: str = typer.Option(
+        None, "--state",
+        help="Belirli state'tekiler (örn. 'failed').",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y",
+        help="Gerçek silme. Bayrak yoksa dry-run: ne silineceği listelenir.",
+    ),
+) -> None:
+    """Eski workspace'leri fiziksel olarak sil (default dry-run).
+
+    Default güvenli: `--yes` olmadan sadece liste basar. Project mode'da
+    sadece `.ortim/` silinir (kullanıcı kodu kalır); pool mode'da tüm
+    workspace dizini gider.
+    """
+    from ortim.audit import AuditLogger
+    from ortim.workspace import delete_workspace, find_cleanup_candidates
+
+    candidates = find_cleanup_candidates(
+        older_than_days=older_than,
+        archived_only=archived_only,
+        state_filter=state_filter,
+        pool_root=WORKSPACE_ROOT if WORKSPACE_ROOT.exists() else None,
+    )
+
+    if not candidates:
+        console.print(
+            f"[green]No workspaces matched the filter "
+            f"(older_than={older_than}d, archived_only={archived_only}, "
+            f"state={state_filter}).[/green]"
+        )
+        return
+
+    table = Table(title="Cleanup candidates")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Mode")
+    table.add_column("Age (days)", justify="right")
+    table.add_column("Reason")
+    table.add_column("Path", style="dim")
+    for c in candidates:
+        table.add_row(
+            c.entry_id,
+            c.name,
+            c.mode,
+            f"{c.age_days:.1f}",
+            c.reason,
+            str(c.path),
+        )
+    console.print(table)
+
+    if not yes:
+        console.print(
+            f"\n[yellow]Dry run.[/yellow] {len(candidates)} workspace(s) would be "
+            "deleted. Add [cyan]--yes[/cyan] to apply."
+        )
+        return
+
+    audit = AuditLogger()
+    deleted = 0
+    for c in candidates:
+        try:
+            delete_workspace(c)
+            audit.log(
+                "workspace_deleted",
+                project_id=c.entry_id,
+                path=str(c.path),
+                age_days=c.age_days,
+                reason=c.reason,
+            )
+            deleted += 1
+        except OSError as e:
+            console.print(f"[red]Failed to delete {c.entry_id}:[/red] {e}")
+
+    console.print(f"\n[green]Deleted {deleted} workspace(s).[/green]")
+
+
+@workspace_app.command("migrate")
+def workspace_migrate(
+    pool_id: str = typer.Argument(..., help="Pool layout'undaki workspace ID (uuid)"),
+    to: Path = typer.Option(
+        ...,
+        "--to",
+        help="Hedef proje dizini. Yoksa oluşturulur; .ortim/ varsa hata.",
+    ),
+    move: bool = typer.Option(
+        False, "--move/--copy",
+        help="--move pool'u taşır (geri dönüşsüz); default --copy kopyalar.",
+    ),
+) -> None:
+    """Pool layout'undaki workspace'i project mode'a taşı.
+
+    `<WORKSPACE_ROOT>/<pool_id>/` içeriği şöyle ayrılır:
+      * ortim metadata (state.json/PRD.md/RFC.md/task_dag.json/.cache/...)
+        → `<to>/.ortim/`
+      * kullanıcı kodu (auth/, cli/, src/, package.json, ...)
+        → `<to>/` (root)
+
+    Default `--copy` pool'u olduğu gibi bırakır; sorun çıkarsa orijinal
+    veri kaybolmaz. `--move` yapısal olarak aynıdır ama pool dizini
+    silinir (sonra `ortim ls --no-pool` ile temizliği teyit et).
+    """
+    from ortim.audit import AuditLogger
+    from ortim.workspace import MigrationError, migrate_pool_to_project
+
+    pool_path = WORKSPACE_ROOT / pool_id
+    try:
+        location = migrate_pool_to_project(pool_path, to.resolve(), move=move)
+    except MigrationError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    # Per-workspace audit log (the migrated state.json now lives under .ortim/)
+    AuditLogger(path=location.metadata_dir / "audit.jsonl").log(
+        "workspace_migrated",
+        project_id=pool_id,
+        from_path=str(pool_path),
+        to_path=str(location.path),
+        mode=("move" if move else "copy"),
+    )
+
+    console.print(
+        f"[green]Migrated[/green] [cyan]{pool_id}[/cyan] → "
+        f"[cyan]{location.path}[/cyan] ({'move' if move else 'copy'})"
+    )
+    console.print(f"Metadata: {location.metadata_dir}")
+    if not move:
+        console.print(
+            f"\n[dim]Pool workspace left intact at {pool_path}. "
+            "Delete manually once you're confident.[/dim]"
+        )
+
+
+@workspace_app.command("doctor")
+def workspace_doctor() -> None:
+    """Sağlık taraması: registry/fs uyumsuzluk, kayıt-dışı pool, aging archive."""
+    from ortim.workspace import doctor_scan
+
+    findings = doctor_scan(pool_root=WORKSPACE_ROOT if WORKSPACE_ROOT.exists() else None)
+    if not findings:
+        console.print("[green]Workspace health: OK[/green] (no findings)")
+        return
+
+    table = Table(title="Workspace doctor")
+    table.add_column("Severity")
+    table.add_column("Code", style="cyan")
+    table.add_column("Entity")
+    table.add_column("Message")
+    sev_colors = {"error": "[red]ERROR[/red]", "warn": "[yellow]WARN[/yellow]", "info": "[dim]INFO[/dim]"}
+    for f in findings:
+        table.add_row(
+            sev_colors.get(f.severity, f.severity),
+            f.code,
+            f.entity or "",
+            f.message,
+        )
+    console.print(table)
+    errors = sum(1 for f in findings if f.severity == "error")
+    if errors > 0:
+        raise typer.Exit(code=1)
+
 
 @skill_app.command("list")
 def skill_list(
@@ -2207,7 +2825,7 @@ def skill_list(
     except FileNotFoundError:
         console.print(f"[red]Project {project_id} not found[/red]")
         raise typer.Exit(1)
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT, project.tenant_id)
+    workspace = project.current_metadata_dir(WORKSPACE_ROOT)
 
     from ortim.architecture import GoldenPathInputs, select_tier
     from ortim.dialog import load_locked_stack
@@ -2346,18 +2964,17 @@ def _render_task_md(task, template: str, project_id: str) -> str:
 
 
 @app.command()
-def tasks(project_id: str) -> None:
+def tasks(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
+) -> None:
     """List task DAG for a project."""
     from ortim.orchestrator import TaskDAG
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
-
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
-    dag_path = workspace / "task_dag.json"
+    project, store, _ = _resolve_project(project_id)
+    dag_path = store.artifact_path("task_dag.json")
     if not dag_path.exists():
         console.print(f"[yellow]No task DAG yet — run orchestrator first.[/yellow]")
         raise typer.Exit(0)
@@ -2433,7 +3050,7 @@ def _build_reviewer_chain(memory, audit):
     return chain
 
 
-def _load_for_execute(project_id: str):
+def _load_for_execute(project_id: str | None):
     """Shared loading for `execute` and `run-all` commands.
 
     Returns (project, workspace, dag, status_file, worker_llm, reviewer_llm,
@@ -2448,11 +3065,8 @@ def _load_for_execute(project_id: str):
     from ortim.memory import MemoryLoader
     from ortim.orchestrator import TaskDAG
 
-    try:
-        project = Project.load(project_id, WORKSPACE_ROOT)
-    except FileNotFoundError:
-        console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+    project, store, _ = _resolve_project(project_id)
+    _block_if_archived(project, action="execute tasks")
 
     if project.state not in (ProjectState.TASKS_READY, ProjectState.EXECUTING):
         console.print(
@@ -2461,7 +3075,7 @@ def _load_for_execute(project_id: str):
         )
         raise typer.Exit(1)
 
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
+    workspace = store.metadata_dir
     dag_path = workspace / "task_dag.json"
     if not dag_path.exists():
         console.print(f"[red]task_dag.json missing — run orchestrator first[/red]")
@@ -2482,7 +3096,7 @@ def _load_for_execute(project_id: str):
         raise typer.Exit(1)
 
     memory = MemoryLoader(REPO_ROOT)
-    audit = AuditLogger()
+    audit = AuditLogger(path=store.audit_log_path())
     reviewer_chain = _build_reviewer_chain(memory, audit)
 
     status_file = TaskStatusFile.load_or_init(workspace, project.id)
@@ -2784,7 +3398,6 @@ def _maybe_finalize_done(project, status_file, dag, workspace) -> bool:
 
 @app.command()
 def execute(
-    project_id: str,
     task_id: str = typer.Argument(..., help="Task ID (T-...)"),
     max_attempts: int = typer.Option(3, help="Reject sonrasi max retry"),
     human_reviewed: bool = typer.Option(
@@ -2793,6 +3406,12 @@ def execute(
         help="Faz 1.5 — sensitive_categories tagged task'lari icin insan onayini "
         "bildirir. Bu olmadan auth/pii/payment kategorilerindeki task'lar "
         "reviewer'i gectikten sonra AWAITING_HITL'e dusurulur.",
+    ),
+    project_id: str = typer.Option(
+        None,
+        "--project",
+        "-p",
+        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
     ),
 ) -> None:
     """Tek bir task'i Worker -> tests -> Reviewer pipeline'indan gecir.
@@ -2918,7 +3537,10 @@ def execute(
 
 @app.command("run-all")
 def run_all(
-    project_id: str,
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     max_attempts: int = typer.Option(3, help="Her task icin max retry"),
     stop_on_fail: bool = typer.Option(
         True, "--stop-on-fail/--continue-on-fail",
@@ -3326,19 +3948,39 @@ def _run_all_loop(
 
 @app.command()
 def budget(
-    project_id: str = typer.Argument(None, help="Belirli proje (opsiyonel — boşsa toplam)"),
+    project_id: str = typer.Argument(
+        None,
+        help="Belirli proje (opsiyonel — boşsa cwd'den keşfedilir veya toplam).",
+    ),
+    all_projects: bool = typer.Option(
+        False, "--all",
+        help="Cwd discovery atlanır — global toplam gösterilir.",
+    ),
     by_provider: bool = typer.Option(
         False, "--by-provider/--total-only",
         help="Provider başına token + USD dağılımını göster",
     ),
 ) -> None:
-    """Token kullanım ve maliyet raporu."""
+    """Token kullanım ve maliyet raporu (default: cwd projesi varsa onu, yoksa toplam)."""
     from ortim.budget import BudgetTracker
 
-    tracker = BudgetTracker()
-    report = tracker.report(project_id)
+    # arg verilirse direkt kullan; verilmezse cwd discovery dene; başarısızsa
+    # global rapor. --all flag'i discovery'i atlatır.
+    effective_id = project_id
+    if effective_id is None and not all_projects:
+        from ortim.workspace import discover_from_cwd, ProjectStore
 
-    table = Table(title=f"Budget Report ({'all' if not project_id else project_id})")
+        loc = discover_from_cwd()
+        if loc is not None:
+            store = ProjectStore(loc)
+            if store.exists():
+                effective_id = store.load().id
+
+    tracker = BudgetTracker()
+    report = tracker.report(effective_id)
+
+    title_scope = "all" if not effective_id else effective_id
+    table = Table(title=f"Budget Report ({title_scope})")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right")
     table.add_row("LLM calls", str(report.entry_count))
@@ -3485,7 +4127,7 @@ def demo(
         if saved_legacy is not None:
             os.environ["AI_FACTORY_DIALOG_MODE"] = saved_legacy
 
-    workspace = Project.workspace_path(project.id, WORKSPACE_ROOT)
+    workspace = project.current_metadata_dir(WORKSPACE_ROOT)
     console.print("\n[bold green]Demo complete.[/bold green]")
     console.print(f"Workspace: [cyan]{workspace}[/cyan]")
     console.print("\n[bold]Next steps:[/bold]")
@@ -3590,7 +4232,10 @@ def doctor(
 
 @app.command("drift-check")
 def drift_check(
-    project_id: str = typer.Argument(..., help="Proje ID"),
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     as_json: bool = typer.Option(
         False, "--json",
         help="JSON çıktısı (otomasyon için)",
@@ -3612,21 +4257,19 @@ def drift_check(
     from ortim.audit import AuditLogger
     from ortim.extend import drift_to_json_dict, inspect_drift
 
-    workspace = WORKSPACE_ROOT / project_id
-    if not workspace.exists():
-        console.print(f"[red]Workspace not found: {workspace}[/red]")
-        raise typer.Exit(code=1)
+    project, store, _ = _resolve_project(project_id)
+    workspace = store.metadata_dir
 
     try:
-        report = inspect_drift(workspace, project_id=project_id)
+        report = inspect_drift(workspace, project_id=project.id)
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1) from None
 
-    audit = AuditLogger()
+    audit = AuditLogger(path=store.audit_log_path())
     audit.log(
         "drift_check_run",
-        project_id=project_id,
+        project_id=project.id,
         cycle_count=report.cycle_count,
         error_count=len(report.errors),
         warning_count=len(report.warnings),
@@ -3640,7 +4283,7 @@ def drift_check(
         console.print_json(_json.dumps(drift_to_json_dict(report)))
     else:
         console.print(
-            f"[bold]Drift Check — {project_id}[/bold] "
+            f"[bold]Drift Check — {project.id}[/bold] "
             f"(cycles inspected: {report.cycle_count})"
         )
         if report.is_clean:
@@ -3664,7 +4307,10 @@ def drift_check(
 
 @app.command()
 def retro(
-    project_id: str = typer.Argument(..., help="Proje ID"),
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+    ),
     per_task: bool = typer.Option(
         False, "--per-task",
         help="Sadece per-task attempt tablosu (rollup gizlenir)",
@@ -3692,7 +4338,12 @@ def retro(
 
     from ortim.audit import aggregate, to_json_dict
 
-    report = aggregate(project_id, workspace_root=WORKSPACE_ROOT)
+    project, _, _ = _resolve_project(project_id)
+    # aggregate() expects (project_id, workspace_root) — pool layout assumption.
+    # Both pool and project mode workspaces have a per-workspace audit.jsonl
+    # accessible via AUDIT_LOG_PATH (set by _resolve_project); aggregate uses
+    # it transparently when no workspace_root match is found.
+    report = aggregate(project.id, workspace_root=WORKSPACE_ROOT)
 
     if as_json:
         console.print_json(_json.dumps(to_json_dict(report)))
@@ -3700,7 +4351,7 @@ def retro(
 
     if report.total_llm_calls == 0 and not report.per_task:
         console.print(
-            f"[yellow]No audit data found for project '{project_id}'.[/yellow]"
+            f"[yellow]No audit data found for project '{project.id}'.[/yellow]"
         )
         console.print(
             "[dim](Either the project hasn't run yet, or AUDIT_LOG_PATH "
@@ -3709,7 +4360,7 @@ def retro(
         return
 
     if not per_task:
-        headline = Table(title=f"Retro — {project_id}")
+        headline = Table(title=f"Retro — {project.id}")
         headline.add_column("Metric", style="cyan")
         headline.add_column("Value", justify="right")
         headline.add_row("Total LLM calls", f"{report.total_llm_calls:,}")

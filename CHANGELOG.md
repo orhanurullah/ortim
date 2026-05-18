@@ -6,6 +6,84 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.0] — 2026-05-17
+
+**Project Mode pivot.** Workspace identity moves from pool layout
+(`<repo>/workspaces/<uuid>/`) to cwd-aware project mode
+(`<user-dir>/.ortim/`). CLI matches the standard git / cargo / terraform /
+Claude Code pattern: `cd <dir> && ortim init` creates a workspace there,
+subsequent commands discover it implicitly. This is a **minor breaking
+change** — pool layout still works for v0.9 but is deprecated and slated
+for removal in v1.0.
+
+### Added
+- `ortim init "<brief>"` — primary workspace-creation command. Auto-detects
+  brownfield (manifest sniff: `package.json`, `pyproject.toml`,
+  `Cargo.toml`, `go.mod`, `pubspec.yaml`, `Gemfile`, `setup.py`, etc.) vs
+  greenfield from cwd contents. `--brownfield` / `--greenfield` overrides.
+- `ortim/workspace/` package: `resolver.py` (cwd + parent walk + registry
+  fallback), `store.py` (mode-agnostic Project I/O), `init.py` (project
+  bootstrap), `registry.py` (`~/.ortim/registry.json` index), `lifecycle.py`
+  (archive / cleanup / doctor / migrate).
+- `ortim ls` (and `ortim workspace list`) — registry-backed global listing
+  with `*` marker for the active workspace, `--prune` for stale entries,
+  `--include-archived` / `--no-pool` filters.
+- `ortim use <id|name>` — set active workspace pointer
+  (`~/.ortim/registry.json::current`). Read by resolver when cwd has no
+  `.ortim/` anchor.
+- `ortim workspace` subcommand namespace: `list`, `show`, `use`, `archive`,
+  `unarchive`, `cleanup --older-than <N> [--yes]`, `doctor`, `migrate <id>
+  --to <path>`.
+- `Project.archived_at` + `Project.kind` fields (`active` / `demo` /
+  `scratch` / `proof_point` / `baseline` / `legacy`).
+- `Project.current_metadata_dir(root)` + `bind_metadata_dir()` — instance
+  method + PrivateAttr that route `project.save(WORKSPACE_ROOT)` to the
+  resolved layout automatically.
+- Per-project audit log at `<workspace>/.ortim/audit.jsonl` (resolver sets
+  `AUDIT_LOG_PATH` env var; in-process `AuditLogger()` constructions land
+  in the right place without explicit threading).
+- 128 new tests: resolver (18), store (16), init (26), CLI cwd-aware (26),
+  registry (20), lifecycle (22).
+
+### Changed
+- All read commands (`status`, `show`, `inspect`, `gates`, `tasks`,
+  `extensions`, `scope --show`) accept an optional `project_id` argument;
+  if omitted, the workspace is discovered from cwd.
+- Mutating commands (`advance`, `run`, `run-all`, `execute`, `extend`,
+  `refine`, `lock`, `scope`, `drift-check`, `retro`, `budget`, `rescan`,
+  `baseline`) follow the same cwd-first pattern. Two-positional-arg
+  commands (`advance`, `execute`, `extend`) moved `project_id` from
+  positional to `--project / -p` flag to keep the common-case usage
+  (`ortim advance prd_approved`) clean.
+- Archived workspaces refuse mutating commands with a friendly hint
+  pointing at `ortim workspace unarchive`. Read commands work normally.
+- `list-projects` deprecated → `ortim ls` (alias keeps working with
+  stderr warning; removed in v1.0).
+- README quick start switched to `cd <dir> && ortim init "<brief>"`.
+
+### Backward compatibility
+- All 196 pool-layout workspaces continue to load + run. Pool ids passed
+  as positional argument still resolve via `_resolve_project`'s pool-first
+  fallback. Pool-mode Project.save / Project.load semantics unchanged.
+- `ortim new` is preserved but emits a deprecation warning recommending
+  `ortim init`. `--from-existing` still works for legacy automation.
+- `WORKSPACE_ROOT` env var still respected for pool root.
+
+### Migration
+- Opt-in `ortim workspace migrate <pool-id> --to <path>` lifts a pool
+  workspace into project mode: ortim metadata (`PRD.md`, `RFC.md`,
+  `state.json`, `.cache/`, etc.) lands in `<path>/.ortim/`; user code
+  (`src/`, `package.json`, ...) stays at `<path>/`. Default `--copy`
+  preserves the pool dir for rollback; `--move` consumes it.
+- 0.9.x retains both modes side by side. v1.0 will drop the pool layout
+  and pool-related CLI flags entirely.
+
+### Documentation
+- New `docs/plans/2026-Q2-project-mode.md` design doc (mimari karar log,
+  migration stratejisi, milestone planı, risk analizi).
+- `docs/plans/2026-Q2-roadmap.md` Faz 3 scope updated to "Project Mode
+  Pivot + Distribution"; 3.2 / 3.4 / 3.5 deferred to Faz 4.
+
 ## [0.8.2] — 2026-05-17
 
 Patch: fix sidebar URLs.
