@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.1] — 2026-05-18
+
+**Patch release.** Fixes the `ortim demo` subprocess chain (it was broken by
+the 0.9.0 pivot of `advance` / `execute` from two-positional-arg to
+`<arg> --project <id>`), and refreshes the user-facing tutorial + failure
+recovery runbook for the project-mode flow.
+
+### Fixed
+- `ortim demo` — the subprocess chain spawned `advance` and `execute` with a
+  two-positional-arg layout (`advance <project_id> <state> ...`) that
+  v0.9.0's signature no longer accepts. Typer rejected the extra argument
+  and the demo failed at G1 auto-approve. Chain now uses the
+  `<state> --project <id>` form. New `test_demo_chain_uses_project_flag_for_advance_and_execute`
+  pins the signature contract so a future positional-vs-flag change in
+  either command surfaces as a test failure before shipping.
+
+### Changed
+- `docs/tutorial/getting-started.md` rewritten end-to-end for project mode:
+  §1.3 workspace pattern (`.ortim/` namespace + discovery rules), §4
+  walkthrough now starts with `cd <dir> && ortim init` instead of
+  `ortim new "<name>" --brief ...`, §6.7 disk cleanup uses
+  `ortim workspace cleanup`, §7 covers `ortim ls` / `ortim use` / `ortim
+  workspace` namespace, cheatsheet shows the cwd-first cadence.
+- `docs/runbook/failure-recovery.md` — new §0 quick reference table for the
+  project-mode command surface; every recipe updated to drop the
+  `<workspace-id>` positional. Also removes references to options that
+  never existed (`--task`, `--artifact worker-output`, `--artifact review`)
+  and points readers at `.ortim/audit.jsonl` and `.ortim/task_status.json`
+  instead.
+
 ## [0.9.0] — 2026-05-17
 
 **Project Mode pivot.** Workspace identity moves from pool layout

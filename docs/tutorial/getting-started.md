@@ -10,7 +10,7 @@ Bu rehber:
 1. [Kurulum + ortam](#1-kurulum--ortam)
 2. [ortim doctor — sağlık kontrolü](#2-ortim-doctor--sağlık-kontrolü)
 3. [İlk run — `ortim demo`](#3-i̇lk-run--ortim-demo)
-4. [Gerçek proje — `ortim new`'dan DONE'a](#4-gerçek-proje--ortim-newdan-donea)
+4. [Gerçek proje — `ortim init`'ten DONE'a](#4-gerçek-proje--ortim-initten-donea)
 5. [Trust calibration — AI yazdı, ben imzalıyorum](#5-trust-calibration--ai-yazdı-ben-i̇mzalıyorum)
 6. [Yaygın sorunlar + çözümleri](#6-yaygın-sorunlar--çözümleri)
 7. [Buradan sonra nereye](#7-buradan-sonra-nereye)
@@ -61,11 +61,38 @@ Yalnız DeepSeek key'i ile sistem tamamen işler. Anthropic key'i eklersen kriti
 
 **DeepSeek key'i nasıl alınır?** [platform.deepseek.com](https://platform.deepseek.com) → Sign up → API Keys → Create. İlk $5 free credit gelir; bir planning chain ~$0.01 olduğundan 500 proje free.
 
-### 1.3 Workspace dizini
+### 1.3 Workspace pattern — Project Mode (0.9+)
 
-Default: `ortim/workspaces/`. Her proje bu dizin altında kendi UUID kısa-id'siyle bir alt-klasör olur. `.gitignore`'da olduğu için commit'lenmez (kendi projen içinde de aynı pattern'i takip et).
+Ortim 0.9'dan itibaren **project mode** default'tur — git/cargo gibi davranır. Her projeyi kendi dizininde başlatırsın; Ortim metadata'yı orada bir `.ortim/` namespace'inde tutar, üretilen kodu **proje dizininin köküne** yazar.
 
-İstersen `.env`'de `ORTIM_WORKSPACE_ROOT=/path/to/dir` ile değiştir.
+```
+~/dev/my-cool-project/        ← cwd; istediğin yer olabilir
+├── .ortim/                   ← Ortim metadata (state.json, PRD.md, RFC.md, tasks/, audit.jsonl, ...)
+├── auth/                     ← Worker'ın yazdığı kod (modül bazında)
+├── src/
+├── package.json              ← brownfield tespiti için kullanılan manifest
+└── ...
+```
+
+`.gitignore`'a `.ortim/` ekle istersen — metadata'yı versiyon kontrolüne almak opsiyoneldir. (Bazıları PRD/RFC'yi commit'lemek ister; içlerinde `audit.jsonl` ve `.cache/` da olduğundan tamamı commit'lenirse repo'da gürültü olur.)
+
+**Discovery**: Ortim hangi workspace'le çalışacağını şu sırayla bulur:
+1. Komut satırında `--project / -p <id>` flag'i (override)
+2. Cwd'de `.ortim/` varsa
+3. Cwd'nin parent dizinlerinden ilkinde `.ortim/` varsa
+4. `~/.ortim/registry.json` içindeki **current** pointer (`ortim use <id|name>` ile set edilir)
+5. Bulunamadıysa friendly error + `ortim init` öner
+
+**Birden fazla projeyi nasıl yönetirsin?**
+
+```bash
+ortim ls                      # tüm bilinen workspace'ler — '*' aktif olanı işaretler
+ortim use my-cool-project     # active context'i set et (cwd dışından da resolve eder)
+ortim workspace show <id>     # detay
+ortim workspace archive <id>  # arşivle (mutating komutları bloklar)
+```
+
+**Legacy pool layout** (0.8 ve öncesi): repo kökündeki `workspaces/<uuid>/` altında yaşar. 0.9+ mevcut pool workspace'leri okumaya devam eder; istersen `ortim workspace migrate <pool-id> --to <path>` ile project mode'a taşırsın. Yeni projeler için pool mode önerilmez.
 
 ---
 
@@ -112,6 +139,8 @@ Bir check `MISS`/`FAIL` çıkarsa altta `Fix hints` bölümü neyi nasıl ekleye
 
 `ortim demo` — kullanıcı etkileşimi olmadan tüm planning chain'i sondan sona çalıştırır. Yeni gelene "sistem ne yapıyor" cevabını gösteren en hızlı yol.
 
+> **Demo, kendi cwd'ni kirletmez.** Geçici bir pool workspace yaratır (`workspaces/<uuid>/`), oraya yazar — bittiğinde inspect edip silebilirsin. Gerçek proje için §4'teki `ortim init` flow'unu kullan.
+
 ```bash
 ortim demo
 ```
@@ -143,13 +172,15 @@ task_dag.json + tasks/T-001.md ... T-NNN.md
   → tasks_ready
 ```
 
-Çıktının son satırında bir workspace ID görürsün, örn. `workspaces/2050c9291eb7`. Bu projeyi açıp dosyalara bak:
+Çıktının son satırında pool workspace path'ini görürsün, örn. `workspaces/2050c9291eb7`. Bu projeyi açıp dosyalara bak:
 
 ```bash
 cd workspaces/2050c9291eb7
 ls
 # PRD.md  RFC.md  intent.json  scope.json  golden_path_inputs.json  state.json  task_dag.json  tasks/
 ```
+
+> Pool mode demo'ya özel. Gerçek projende dosyalar `<your-dir>/.ortim/` altında olur (§4).
 
 ### 3.2 Her artifact ne işe yarar?
 
@@ -164,44 +195,53 @@ ls
 | `tasks/T-NNN.md` | Her task için Worker'ın okuyacağı brief | Orchestrator |
 | `state.json` | Project state machine history | runtime |
 
-`ortim show <id> --artifact prd|rfc|scope|intent|stack` ile herhangi birini konsola bas.
+`ortim show --artifact prd|rfc|scope|intent|stack` ile herhangi birini konsola bas (cwd-aware; demo dir'inden çalıştır, ya da `--project <id>`).
 
 ### 3.3 Maliyet kontrolü
 
 ```bash
-ortim retro <workspace-id>
+cd workspaces/<demo-id>
+ortim retro
 ```
 
 Token kullanımı + USD maliyet tablosu döner. Planning-only demo tipik ~$0.01 (DeepSeek). Architect Anthropic'teyse ~$0.05–0.10.
 
 ---
 
-## 4. Gerçek proje — `ortim new`'dan DONE'a
+## 4. Gerçek proje — `ortim init`'ten DONE'a
 
-Demo "izle, gör" içindir; gerçek proje açmak için `ortim new` kullan.
+Demo "izle, gör" içindir; gerçek proje açmak için kendi dizinine girip `ortim init` çağırırsın. 0.9+ tüm komutlar cwd-aware — workspace'in `.ortim/` namespace'inde çözümlenir; UUID argüman geçmek zorunda değilsin.
 
-### 4.1 Proje aç
+### 4.1 Proje dizinini hazırla + init
 
 ```bash
-ortim new "Cool Project Adı" --brief "TR brief'in burada..."
+mkdir ~/dev/cool-project && cd ~/dev/cool-project
+ortim init "TR brief'in burada..."
 ```
 
-Brief uzun olabilir. `--brief @path/to/brief.txt` ile dosyadan da okur.
+Brief uzun olabilir — shell heredoc veya `$(cat brief.txt)` ile geçirebilirsin. Default isim cwd dizin adı; istersen `--name` flag'iyle override et.
 
-Çıktıda **project_id** görürsün (12-karakter hex). Sonraki tüm komutlar bu id'yi alır.
+Çıktı:
 
 ```
-Created project: 'Cool Project Adı'
-  project_id: 7f3a2b9c1d4e
-  state:      intake
-  workspace:  workspaces/7f3a2b9c1d4e
+Initialized 7f3a2b9c1d4e (cool-project, greenfield)
+Path: /home/you/dev/cool-project
+State: intake
+
+Next: ortim run (Babel + Analyst; ANTHROPIC_API_KEY veya DEEPSEEK_API_KEY gerekir)
 ```
+
+`.ortim/` dizini şimdi cwd'de var. Bundan sonraki tüm komutlar — `run`, `status`, `scope`, `tasks`, `run-all`, ... — bu dizinden veya alt-dizinlerinden çalıştırılırsa otomatik bu workspace'i seçer.
+
+**Brownfield (mevcut codebase)**: Eğer dizinde `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod` gibi manifest dosyaları varsa `ortim init` otomatik brownfield mode'a düşer — codebase'i tarar, mevcut framework/dil tespit eder, Architect Call 1'i atlayıp doğrudan RFC drafting'e gider. Manuel override: `--greenfield` (boş dizin gibi davran) veya `--brownfield` (zorla codebase tarama).
 
 ### 4.2 Babel + planning'i çalıştır
 
 ```bash
-ortim run 7f3a2b9c1d4e
+ortim run
 ```
+
+Pozisyonel UUID yok — komut cwd'den `.ortim/`'i bulur. Eğer farklı bir dizinden çalıştırıyorsan `--project <id>` veya `ortim use <id>` ile aktif context'i set et.
 
 `run` komutu state'e göre uygun ajanı çağırır. İlk çağrı Babel'i koşturur, intent.json üretir, PRD_DRAFTING state'ine geçer.
 
@@ -212,7 +252,7 @@ Default davranış: **dialog mode kapalı** ise `run` tek seferde Babel + Analys
 PRD draftlanınca state `MVP_SCOPE_LOCKING` olur. `scope.json` otomatik seed olur (must_have→phase 1, nice_to_have→phase 2). Şimdi karar verme zamanı:
 
 ```bash
-ortim scope 7f3a2b9c1d4e
+ortim scope
 ```
 
 İnteraktif tablo + her feature için phase atama prompt'u açılır. Default'u kabul etmek için Enter'a bas.
@@ -220,8 +260,7 @@ ortim scope 7f3a2b9c1d4e
 Headless (CI veya hızlı kullanım):
 
 ```bash
-# Bir feature'ı Phase 2'ye taşı, scope'u kilitle, G1'e geç
-ortim scope 7f3a2b9c1d4e --set "social login=2" --lock
+ortim scope --set "social login=2" --lock
 ```
 
 `--set "<substring>=<phase>"` ile birden çok feature düzenlenebilir. `--lock` interactive prompt'u atlar ve PRD_AWAITING_APPROVAL'a geçer.
@@ -231,7 +270,7 @@ ortim scope 7f3a2b9c1d4e --set "social login=2" --lock
 ### 4.4 G1 — PRD onayı
 
 ```bash
-ortim show 7f3a2b9c1d4e --artifact prd
+ortim show --artifact prd
 ```
 
 Oku. Her must_have feature beklenen şekilde yer alıyor mu? Non-goal'lar net mi? open_questions varsa cevaplaman gerekli mi?
@@ -239,15 +278,17 @@ Oku. Her must_have feature beklenen şekilde yer alıyor mu? Non-goal'lar net mi
 Onayla:
 
 ```bash
-ortim advance 7f3a2b9c1d4e prd_approved --note "reviewed"
+ortim advance prd_approved --note "reviewed"
 ```
 
-PRD'de düzeltme istersen `ortim refine` (dialog mode açıksa) veya `ortim advance 7f3a2b9c1d4e prd_drafting` ile geri at, sonra PRD.md'yi elle düzenle veya `ortim run` ile tekrar üret.
+> `advance` ve `execute`/`extend` çoklu-pozisyonel-arg aldıkları için `--project / -p` flag pattern'i kullanırlar. Cwd-aware çalışıyorsan flag gereksiz; farklı dizindeysen: `ortim advance prd_approved -p 7f3a2b9c1d4e --note ...`.
+
+PRD'de düzeltme istersen `ortim refine "feedback"` (dialog mode açıksa) veya `ortim advance prd_drafting` ile geri at, sonra PRD.md'yi elle düzenle veya `ortim run` ile tekrar üret.
 
 ### 4.5 Architect — RFC + tier
 
 ```bash
-ortim run 7f3a2b9c1d4e
+ortim run
 ```
 
 Architect Call 1 PRD'den `GoldenPathInputs` çıkarır. Eğer Babel `user_stack_hints` capture etmişse (örn. "Flutter", "SQLite"), main.py app_class ve tier scorer hint'lerini override eder (Faz 1.2 fix).
@@ -257,7 +298,7 @@ Sonra deterministic scorer tier'ı seçer, Architect Call 2 RFC.md drafter.
 ### 4.6 G2 — RFC onayı
 
 ```bash
-ortim show 7f3a2b9c1d4e --artifact rfc
+ortim show --artifact rfc
 ```
 
 Bak:
@@ -266,30 +307,30 @@ Bak:
 - §7 **Module Breakdown** iki-katmanlı (Phase 1 | Phase 2+) mi?
 - §9 **Risks** boş değil mi (en az 3 risk olmalı)?
 
-Sorun varsa: `ortim advance 7f3a2b9c1d4e rfc_drafting` ile geri, RFC.md'yi elle düzenle. Sorun yoksa:
+Sorun varsa: `ortim advance rfc_drafting` ile geri, RFC.md'yi elle düzenle. Sorun yoksa:
 
 ```bash
-ortim advance 7f3a2b9c1d4e rfc_approved --note "reviewed"
+ortim advance rfc_approved --note "reviewed"
 ```
 
 ### 4.7 Orchestrator — DAG generation
 
 ```bash
-ortim run 7f3a2b9c1d4e
+ortim run
 ```
 
 Orchestrator RFC'yi okur, atomik task'lar üretir. Validator'ler (cycle yok, missing dep yok, module_scope ∈ RFC §7, phase ∈ {1, 2+}) ihlali yakalarsa retry'la (max 3 kez).
 
 ```bash
-ortim tasks 7f3a2b9c1d4e
+ortim tasks
 ```
 
-Task listesi + dependency tablosu çıkar. Her task `tasks/T-NNN.md` dosyasında.
+Task listesi + dependency tablosu çıkar. Her task `.ortim/tasks/T-NNN.md` dosyasında.
 
 ### 4.8 Worker — implementasyon
 
 ```bash
-ortim run-all 7f3a2b9c1d4e --phase 1
+ortim run-all --phase 1
 ```
 
 `--phase 1` bayrağı sadece MVP task'larını koşturur (Phase 2+ PENDING kalır). Default sequential mode, her task git branch'inde isolation.
@@ -302,12 +343,14 @@ Worker her task için:
 5. Reviewer chain (Code/Security/Test/Perf) verdict döner
 6. APPROVED → DONE; REJECT → 3 retry'la kadar; AWAITING_HITL → durur
 
+Üretilen kod **cwd köküne** yazılır (`auth/`, `src/`, ...). Metadata `.ortim/` altında kalır.
+
 ### 4.9 İlerleme izleme
 
 ```bash
-ortim status 7f3a2b9c1d4e         # state + history
-ortim drift-check 7f3a2b9c1d4e    # RFC ↔ DAG ↔ status integrity
-ortim retro 7f3a2b9c1d4e          # cost + retry rate + HITL escalations
+ortim status         # state + history
+ortim drift-check    # RFC ↔ DAG ↔ status integrity
+ortim retro          # cost + retry rate + HITL escalations
 ```
 
 Her şey DONE'a indiyse `ortim run-all` README.md'yi de otomatik draft eder.
@@ -386,7 +429,7 @@ Aşan kalemler genellikle:
 - Worker bir task için 3× retry yaptı
 - Çok büyük PRD/RFC (token sayısı yüksek)
 
-`ortim retro <id>` ile breakdown'u gör.
+`ortim retro` ile breakdown'u gör (proje dizini içinden).
 
 ### 6.5 State machine hatası — "Cannot transition X -> Y"
 
@@ -404,9 +447,17 @@ Veya editable install kopuk: `pip install -e .` tekrar.
 
 ### 6.7 Workspace dolu — disk yer kaplıyor
 
-`workspaces/*/node_modules`, `*/.venv`, `*/target` (Rust) gibi dependency klasörleri büyür. Hâlâ ihtiyacın olmayan workspace'leri sil veya arşivle.
+`node_modules`, `.venv`, `target` (Rust) gibi dependency klasörleri büyür. Bunlar cwd'nin köküne yazıldığı için kendi proje dizininde yönetilir.
 
-`ortim list-projects` ile son N proje durumu görünür.
+```bash
+ortim ls                                # tüm bilinen workspace'ler
+ortim workspace archive <id>            # mutating komutları blokla, listede sakla
+ortim workspace cleanup --older-than 30 --archived-only --yes
+                                        # 30+ gündür arşivli olanların .ortim/ dizinlerini sil
+ortim workspace doctor                  # registry ↔ disk tutarlılık taraması
+```
+
+Project mode'da `cleanup` sadece `.ortim/` namespace'ini siler — kullanıcı kodu dokunulmaz. Pool legacy workspace'lerde tüm dizin silinir.
 
 ---
 
@@ -415,8 +466,10 @@ Veya editable install kopuk: `pip install -e .` tekrar.
 - **Daha derin mimari:** [`Ortim_Architecture.md`](../../Ortim_Architecture.md) — agent'lar, state machine, audit, RAG.
 - **Tier seçim mantığı:** [`docs/golden-paths/`](../golden-paths/) — her tier için reference doc.
 - **Yeni skill yazmak:** [`docs/skills/authoring-guide.md`](../skills/authoring-guide.md) (yakında — Faz 2).
-- **Brownfield (mevcut codebase):** `ortim new --from-existing <path>` — bkz. `ortim inspect --help`.
-- **Iteratif geliştirme:** `ortim extend <id> "<yeni feature brief>"` — DONE projeye delta ekler.
+- **Brownfield (mevcut codebase):** `cd <project> && ortim init "<brief>"` — manifest dosyaları varsa auto-detect. `ortim inspect` ile baseline'ı incele.
+- **İteratif geliştirme:** DONE projeye delta ekle — proje dizininden `ortim extend "<yeni feature brief>"`. Farklı dizindeysen `ortim extend "..." -p <id>`.
+- **Birden çok workspace yönetimi:** `ortim ls` (liste) · `ortim use <id|name>` (active context) · `ortim workspace {show,archive,cleanup,doctor,migrate}`.
+- **Pool → project migration (legacy):** `ortim workspace migrate <pool-id> --to <path>` — pool layout'unu yeni dizine taşır, default `--copy` ile rollback-safe.
 - **Audit + drift kontrolü:** `ortim drift-check`, `ortim audit-verify`.
 - **Roadmap + bilinen açıklar:** [`docs/plans/2026-Q2-roadmap.md`](../plans/2026-Q2-roadmap.md), [`docs/backlog.md`](../backlog.md).
 
@@ -424,34 +477,44 @@ Veya editable install kopuk: `pip install -e .` tekrar.
 
 ## Cheatsheet
 
+Project mode default'tur — komutlar cwd'den `.ortim/`'i bulur. Aşağıdaki örnekler proje dizini içinden çalıştırılıyor varsayar.
+
 ```bash
 # Sağlık + kurulum
 ortim doctor
 
-# Hızlı tanıtım (no input)
+# Hızlı tanıtım (no input, pool workspace)
 ortim demo
 
 # Yeni proje
-ortim new "name" --brief "TR brief"
-ortim run <id>                    # Babel + Analyst → MVP_SCOPE_LOCKING
-ortim scope <id> --lock           # scope'u auto-lock + G1
-ortim show <id> --artifact prd
-ortim advance <id> prd_approved
-ortim run <id>                    # Architect → RFC_AWAITING_APPROVAL
-ortim advance <id> rfc_approved
-ortim run <id>                    # Orchestrator → tasks_ready
-ortim run-all <id> --phase 1      # Worker × N
+mkdir ~/dev/cool-project && cd ~/dev/cool-project
+ortim init "TR brief..."          # .ortim/ namespace oluştur (brownfield: auto-detect)
+ortim run                         # Babel + Analyst → MVP_SCOPE_LOCKING
+ortim scope --lock                # scope'u auto-lock + G1
+ortim show --artifact prd
+ortim advance prd_approved        # advance/execute/extend: 1-pos + -p flag pattern
+ortim run                         # Architect → RFC_AWAITING_APPROVAL
+ortim advance rfc_approved
+ortim run                         # Orchestrator → tasks_ready
+ortim run-all --phase 1           # Worker × N
 
-# Gözlem
-ortim status <id>
-ortim tasks <id>
-ortim retro <id>
-ortim drift-check <id>
-ortim show <id> --artifact rfc
+# Gözlem (cwd-aware)
+ortim status
+ortim tasks
+ortim retro
+ortim drift-check
+ortim show --artifact rfc
 
 # İterasyon
-ortim refine <id> "feedback"      # dialog mode
-ortim extend <id> "yeni feature"  # DONE sonrası delta
+ortim refine "feedback"           # dialog mode
+ortim extend "yeni feature"       # DONE sonrası delta
+
+# Workspace yönetimi (cwd dışından)
+ortim ls                          # tüm bilinen workspace'ler (* aktif olanı)
+ortim use cool-project            # aktif context'i set et (registry pointer)
+ortim status -p 7f3a2b9c1d4e      # belirli bir workspace'i target'la
+ortim workspace archive <id>
+ortim workspace cleanup --older-than 30 --archived-only --yes
 ```
 
 Tutorial'ı bitirdin. Bir sorunla karşılaşırsan veya tutorial'da boşluk gördüysen GitHub issue aç.

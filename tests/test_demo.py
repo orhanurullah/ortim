@@ -97,6 +97,58 @@ def test_demo_creates_project_workspace_before_running_subprocesses(
         assert project.initial_brief_tr == "test brief"
 
 
+def test_demo_chain_uses_project_flag_for_advance_and_execute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """0.9.0 moved `advance` and `execute` to a 1-positional + `--project`
+    flag signature. Demo spawns subprocesses against the same CLI surface,
+    so it must use the flag form — passing the workspace id as a second
+    positional makes typer raise `Got unexpected extra argument`.
+
+    Capture the args every subprocess call would have received and assert
+    each `advance`/`execute` invocation carries `--project` (not a bare
+    positional UUID after the state/task argument)."""
+    captured: list[list[str]] = []
+
+    class _Result:
+        returncode = 0
+
+    def _capture(args: list[str], **kwargs: object) -> _Result:
+        captured.append(list(args))
+        return _Result()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "workspaces"
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        with patch("subprocess.run", side_effect=_capture):
+            _runner().invoke(
+                app, ["demo", "--brief", "x", "--execute"],
+                catch_exceptions=False,
+            )
+
+    # Pull out the command name (first token after `-m ortim.main`).
+    def _command(call: list[str]) -> str:
+        # call looks like [sys.executable, "-m", "ortim.main", <cmd>, ...]
+        for i, tok in enumerate(call):
+            if tok == "ortim.main" and i + 1 < len(call):
+                return call[i + 1]
+        return ""
+
+    advance_calls = [c for c in captured if _command(c) == "advance"]
+    execute_calls = [c for c in captured if _command(c) == "execute"]
+
+    assert advance_calls, "demo chain must include advance steps"
+    assert execute_calls, "demo chain with --execute must include execute step"
+
+    for c in advance_calls + execute_calls:
+        assert "--project" in c, (
+            f"chain call missing --project flag (would fail typer parse): {c}"
+        )
+
+
 def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     """Demo sets `ORTIM_DIALOG_MODE=off` for its own run; if the
     operator had set it to `on` before, the original value must be

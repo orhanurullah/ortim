@@ -39,7 +39,7 @@ from ortim.orchestrator import (
 
 load_dotenv()
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.0)")
+app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.1)")
 console = Console()
 
 # Deprecation: the `ai-factory` CLI alias is kept for backwards
@@ -4083,6 +4083,12 @@ def demo(
         return result.returncode
 
     try:
+        # 0.9.0 project-mode pivot moved advance/execute/extend to a single
+        # positional arg + `--project / -p` flag for the workspace id. Demo
+        # spawns subprocesses against the same CLI surface, so it must use
+        # the flag form for those three commands. `run` and `scope` remain
+        # positional cwd-aware (a pool id is still resolvable as the first
+        # positional via the pool-fallback in `_resolve_project`).
         chain = [
             (["run", project.id], "Babel + Analyst (PRD draft)"),
             (
@@ -4090,18 +4096,23 @@ def demo(
                 "MVP scope auto-lock (Faz 1.1 — accepts default phase split)",
             ),
             (
-                ["advance", project.id, "prd_approved", "--note", "demo auto-approve"],
+                ["advance", "prd_approved", "--project", project.id,
+                 "--note", "demo auto-approve"],
                 "G1 — auto-approve PRD",
             ),
             (["run", project.id], "Architect (RFC + tier selection)"),
             (
-                ["advance", project.id, "rfc_approved", "--note", "demo auto-approve"],
+                ["advance", "rfc_approved", "--project", project.id,
+                 "--note", "demo auto-approve"],
                 "G2 — auto-approve RFC",
             ),
             (["run", project.id], "Orchestrator (DAG generation)"),
         ]
         if execute_first:
-            chain.append((["execute", project.id, "T-001"], "Worker + Reviewer (T-001)"))
+            chain.append(
+                (["execute", "T-001", "--project", project.id],
+                 "Worker + Reviewer (T-001)")
+            )
 
         for args, label in chain:
             rc = _step(args, label)
