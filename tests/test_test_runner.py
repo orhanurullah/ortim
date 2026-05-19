@@ -79,7 +79,15 @@ def test_workspace_file_handles_quoted_values(tmp_path: Path) -> None:
     )
     plan = configured_plan(tmp_path)
     assert plan is not None
-    assert plan.cmd == ["pytest", "-q"]
+    # `_resolve_binary` calls `shutil.which("pytest")` which returns the full
+    # path on systems where pytest is on PATH (e.g. `C:\...\pytest.EXE` on
+    # Windows). Compare on the basename so the test passes on both POSIX
+    # and Windows. The assertion that matters here is that the quoted
+    # `'pytest -q'` got split into two tokens — not that the first one is
+    # literally "pytest".
+    assert len(plan.cmd) == 2
+    assert Path(plan.cmd[0]).stem.lower() == "pytest"
+    assert plan.cmd[1] == "-q"
 
 
 def test_disabled_via_env_overrides_everything(

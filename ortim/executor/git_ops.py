@@ -61,9 +61,17 @@ def git_enabled(workspace: Path) -> bool:
 def _run(
     args: list[str], cwd: Path, *, check: bool = True, timeout: float = 30.0
 ) -> subprocess.CompletedProcess[str]:
+    # `stdin=DEVNULL` is required on Python 3.14 + Windows: subprocess
+    # tries to inherit the parent's stdin handle even when only stdout/
+    # stderr are piped via `capture_output=True`. Under pytest the parent
+    # stdin handle is invalid, and `_make_inheritable` raises
+    # `OSError: [WinError 6/50]`. DEVNULL gives subprocess a valid sentinel
+    # so it doesn't touch the parent handle. No behavioral change — git
+    # never reads stdin in these invocations.
     result = subprocess.run(
         ["git", *args],
         cwd=str(cwd),
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",

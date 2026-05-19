@@ -176,6 +176,7 @@ def capture(workspace: Path, cmd: str | None = None, timeout: int = 600) -> Test
             chosen,
             shell=True,
             cwd=str(workspace),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

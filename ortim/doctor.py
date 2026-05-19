@@ -95,6 +95,7 @@ def _which_version(binary: str, version_flag: str = "--version") -> str | None:
         # strings are ASCII in practice so this never loses signal.
         out = subprocess.run(
             [path, version_flag],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             timeout=5.0,
         )

@@ -211,6 +211,7 @@ def run_tests(
         proc = subprocess.run(
             scoped_cmd,
             cwd=str(workspace),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             encoding="utf-8",

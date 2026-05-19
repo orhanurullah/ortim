@@ -102,6 +102,7 @@ def run_hook(
                 cmd,
                 shell=True,
                 cwd=str(cwd),
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
