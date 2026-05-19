@@ -2,4 +2,4 @@
 # Copyright (c) 2026 ortim.dev
 """Ortim runtime."""
 
-__version__ = "0.9.2"
+__version__ = "0.9.4"

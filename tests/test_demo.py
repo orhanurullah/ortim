@@ -46,20 +46,55 @@ def test_demo_default_brief_is_non_empty_english() -> None:
 
 
 def test_demo_aborts_when_no_llm_key_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No DEEPSEEK_API_KEY and no ANTHROPIC_API_KEY → exit code 1 with
-    a pointer to `ortim doctor`. Critical: this runs in CI / fresh
-    machines where neither key is set and we want a friendly error,
-    not a stack trace from the Babel layer.
+    """No credential for the resolved provider → exit code 1 with a
+    pointer to the config wizard. Critical: this runs in CI / fresh
+    machines where keys are absent and we want a friendly error, not a
+    stack trace from the Babel layer.
 
     The demo command reads `os.environ` directly (not CliRunner's env=),
     so we monkeypatch the actual process environment."""
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # Pin to anthropic so the assertion is independent of any
+    # LLM_PROVIDER inherited from the dev `.env`.
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     runner = _runner()
     result = runner.invoke(app, ["demo"], catch_exceptions=False)
     assert result.exit_code == 1
-    assert "No LLM API key" in result.stdout
-    assert "ortim doctor" in result.stdout
+    assert "ANTHROPIC_API_KEY is not set" in result.stdout
+    assert "ortim config init" in result.stdout
+
+
+def test_demo_passes_when_provider_needs_no_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--provider ollama` (local, key-free) must bypass the key
+    pre-flight. Otherwise a PyPI user with no Anthropic/DeepSeek
+    account cannot try the demo at all."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "workspaces"
+        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+
+        class _Result:
+            returncode = 1  # short-circuit the subprocess chain
+
+        with patch("subprocess.run", return_value=_Result()):
+            result = _runner().invoke(
+                app, ["demo", "--brief", "x", "--provider", "ollama"],
+                catch_exceptions=False,
+            )
+
+        # Assert INSIDE the `with` so the tmpdir hasn't been cleaned up.
+        # We care that the pre-flight did NOT abort with a key error —
+        # the abort path returns before `_ensure_workspace_root()` runs,
+        # so a missing ws_root indicates a false-positive key block.
+        assert ws_root.exists(), (
+            f"ws_root not created; demo aborted early. "
+            f"stdout=\n{result.stdout}"
+        )
+        assert "is not set" not in result.stdout
 
 
 def test_demo_creates_project_workspace_before_running_subprocesses(

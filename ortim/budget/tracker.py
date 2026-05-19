@@ -84,46 +84,88 @@ class BudgetTracker:
             6,
         )
 
+    def _sources(self, project_scoped: bool) -> list[Path]:
+        """Resolve the ordered list of audit logs to scan.
+
+        Always includes the configured `audit_path`. When the caller asked
+        for project-specific data (`project_id` was set), append the global
+        default (`./ortim/audit/decisions.jsonl`) as a fallback if it
+        differs from the primary — keeps legacy pool workspaces working,
+        since their per-workspace `audit.jsonl` was never written (events
+        landed in the global log).
+
+        Whole-log queries (no project_id) intentionally read only the
+        primary source: a global rollup must not silently mix in another
+        path that the caller did not opt into. Rows that appear in both
+        files are still deduped at read time by `(timestamp, event,
+        task_id)`.
+        """
+        sources = [self.audit_path]
+        if not project_scoped:
+            return sources
+        global_default = Path("./ortim/audit/decisions.jsonl")
+        primary = self.audit_path.resolve()
+        if primary != global_default.resolve() and global_default.exists():
+            sources.append(global_default)
+        return sources
+
     def report(
         self,
         project_id: str | None = None,
         tenant_id: str | None = None,
     ) -> BudgetReport:
-        if not self.audit_path.exists():
+        sources = self._sources(project_scoped=project_id is not None)
+        if not any(p.exists() for p in sources):
             return BudgetReport(project_id, 0, 0, 0.0, 0)
 
         per_prov_in: dict[str, int] = defaultdict(int)
         per_prov_out: dict[str, int] = defaultdict(int)
         per_prov_count: dict[str, int] = defaultdict(int)
+        seen_rows: set[tuple[object, str, object]] = set()
 
-        with self.audit_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
+        for source_path in sources:
+            if not source_path.exists():
+                continue
+            with source_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
 
-                if tenant_id is not None and entry.get("tenant_id", "default") != tenant_id:
-                    continue
+                    if tenant_id is not None and entry.get("tenant_id", "default") != tenant_id:
+                        continue
 
-                if project_id and entry.get("project_id") != project_id:
-                    continue
+                    if project_id and entry.get("project_id") != project_id:
+                        continue
 
-                tokens = entry.get("tokens")
-                if not isinstance(tokens, dict):
-                    continue
-                in_tokens = int(tokens.get("in", 0))
-                out_tokens = int(tokens.get("out", 0))
-                if in_tokens == 0 and out_tokens == 0:
-                    continue
+                    tokens = entry.get("tokens")
+                    if not isinstance(tokens, dict):
+                        continue
+                    in_tokens = int(tokens.get("in", 0))
+                    out_tokens = int(tokens.get("out", 0))
+                    if in_tokens == 0 and out_tokens == 0:
+                        continue
 
-                provider = str(entry.get("provider") or "anthropic").lower()
-                per_prov_in[provider] += in_tokens
-                per_prov_out[provider] += out_tokens
-                per_prov_count[provider] += 1
+                    # Dedup only when the row carries a strong identity
+                    # (timestamp + event). Real audit rows always have
+                    # both; synthetic test rows often have neither and
+                    # must not collapse into a single seen-key bucket.
+                    ts = entry.get("timestamp")
+                    ev = entry.get("event")
+                    if ts and ev:
+                        row_key = (ts, str(ev), entry.get("task_id"))
+                        if row_key in seen_rows:
+                            continue
+                        seen_rows.add(row_key)
+
+                    provider = str(entry.get("provider") or "anthropic").lower()
+                    per_prov_in[provider] += in_tokens
+                    per_prov_out[provider] += out_tokens
+                    per_prov_count[provider] += 1
 
         per_provider: dict[str, ProviderBreakdown] = {}
         total_in = 0

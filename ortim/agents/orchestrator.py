@@ -29,12 +29,38 @@ from ortim.scope import ScopeManifest
 # error back into the existing retry loop.
 
 
+def _normalize_module_name(name: str) -> str:
+    """Coerce an RFC module label or `task.module_scope` to a filesystem-
+    safe form for comparison.
+
+    Lowercases, collapses internal whitespace to `-`, and drops any
+    character outside `[a-z0-9_/-]`. Slash is preserved so nested module
+    labels like `components/TaskForm` survive (they map to a two-segment
+    path under the sandbox). Whitespace, which broke the proof-point run
+    (`"API Client Module"` → unquotable filesystem segment), is the
+    target this normalizer disarms.
+
+    Returns the empty string when nothing usable remains.
+    """
+    if not name:
+        return ""
+    lowered = name.strip().lower()
+    collapsed = re.sub(r"\s+", "-", lowered)
+    safe = re.sub(r"[^a-z0-9_/-]", "", collapsed)
+    return safe.strip("-_/")
+
+
 def _parse_rfc_modules(rfc_text: str) -> set[str] | None:
     """Extract the module names declared in RFC §7 Module Breakdown.
 
     Handles both layouts the Architect produces:
       - markdown table: rows of `| \\`name\\` | responsibility | ...`
       - bullet list: `- \\`name\\` — responsibility`
+
+    Returned names are normalized via `_normalize_module_name` so the
+    subset check in `_find_unscoped_tasks` is robust to spacing / case
+    differences between RFC §7 labels and the kebab-case form the
+    Orchestrator emits.
 
     Returns `None` when §7 is missing or no module names parse. `None`
     means "no claim made" — caller should skip the subset check rather
@@ -55,17 +81,19 @@ def _parse_rfc_modules(rfc_text: str) -> set[str] | None:
     # (`| Module | Responsibility | ...`) has no backticks so it's filtered
     # out naturally.
     for m in re.finditer(r"^\|\s*`([^`]+)`\s*\|", body, re.MULTILINE):
-        name = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
-        if name:
-            modules.add(name)
+        raw = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
+        norm = _normalize_module_name(raw)
+        if norm:
+            modules.add(norm)
 
     # Pattern B — bullet-list fallback. Only consulted if table parse
     # found nothing (Architect's two layouts don't co-occur).
     if not modules:
         for m in re.finditer(r"^\s*[-*]\s+`([^`]+)`", body, re.MULTILINE):
-            name = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
-            if name:
-                modules.add(name)
+            raw = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
+            norm = _normalize_module_name(raw)
+            if norm:
+                modules.add(norm)
 
     return modules or None
 
@@ -86,7 +114,10 @@ def _find_unscoped_tasks(
         scope = task.module_scope
         if isinstance(scope, list):
             scope = scope[0] if scope else ""
-        if scope not in rfc_modules:
+        # `rfc_modules` is already pre-normalized by `_parse_rfc_modules`;
+        # normalize the task side too so kebab-case ↔ Title Case mismatch
+        # doesn't flag a correctly-targeted task as unscoped.
+        if _normalize_module_name(scope) not in rfc_modules:
             out.append((task.id, scope or "(empty)"))
     return out
 
@@ -127,14 +158,16 @@ def _parse_rfc_extension_modules(rfc_text: str) -> set[str]:
         # Same two-pattern parse as `_parse_rfc_modules`: table rows, then
         # bullet-list fallback.
         for m in re.finditer(r"^\|\s*`([^`]+)`\s*\|", body, re.MULTILINE):
-            name = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
-            if name:
-                modules.add(name)
+            raw = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
+            norm = _normalize_module_name(raw)
+            if norm:
+                modules.add(norm)
         if not modules:
             for m in re.finditer(r"^\s*[-*]\s+`([^`]+)`", body, re.MULTILINE):
-                name = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
-                if name:
-                    modules.add(name)
+                raw = re.sub(r"\s*\(new\)\s*$", "", m.group(1)).strip()
+                norm = _normalize_module_name(raw)
+                if norm:
+                    modules.add(norm)
     return modules
 
 

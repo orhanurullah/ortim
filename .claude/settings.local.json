@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python -c \"from ortim.config import Config, load, save, apply_to_env, default_path; print\\('store ok'\\); from ortim.config.cli import config_app; print\\('cli ok'\\); import ortim.main; print\\('main ok'\\)\")",
+      "PowerShell(python -m ortim.main config --help)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(New-Item *)",
+      "PowerShell(Set-Location *)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; python -m pytest tests/test_config_store.py -v 2>&1 | Select-Object -Last 40)",
+      "Bash(python -m venv --help)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_config_store.py -v 2>&1 | Select-Object -Last 40)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_dotenv_cwd.py tests/test_config_store.py tests/test_llm_router.py tests/test_llm_providers.py tests/test_doctor.py -v 2>&1 | Select-Object -Last 50)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest 2>&1 | Select-Object -Last 20)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_demo.py -v 2>&1 | Select-Object -Last 20)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_demo.py::test_demo_passes_when_provider_needs_no_key -v -s 2>&1 | Select-Object -Last 30)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_demo.py -v 2>&1 | Select-Object -Last 15)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest 2>&1 | Select-Object -Last 5)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\Flutter\\\\projects\\\\ortim\"; C:\\\\Flutter\\\\projects\\\\ortim\\\\.venv\\\\Scripts\\\\python.exe -m pytest 2>&1 | Select-Object -Last 3)"
+    ]
+  }
+}

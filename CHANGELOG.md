@@ -6,6 +6,161 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.4] — 2026-05-19
+
+**PyPI install bug-fix + user-level config store.** Reported by a PyPI user
+who could not get `LLM_PROVIDER=deepseek` in `.env` to take effect; the
+fix has two halves — the dotenv discovery bug, and a persistent
+provider/key config so the next install never hits the same wall.
+
+### Fixed
+- `load_dotenv()` was called argument-less in `ortim/main.py`, which made
+  `python-dotenv` walk up from the caller frame's file location instead
+  of the user's `cwd`. On dev installs the file lives inside the repo,
+  so walking up from it eventually found the repo's `.env` and the bug
+  was invisible. On PyPI installs `main.py` lives in `site-packages`,
+  and walking up from there never reaches a user project directory —
+  so a `.env` placed in the project (e.g. `C:/projects/deneme/.env`)
+  was silently ignored, and the runtime always asked for
+  `ANTHROPIC_API_KEY` no matter what `LLM_PROVIDER` the operator set.
+  Now `load_dotenv(find_dotenv(usecwd=True))` walks from `os.getcwd()`,
+  matching operator intent. Two regression tests
+  (`test_find_dotenv_usecwd_walks_from_user_cwd`,
+  `test_find_dotenv_usecwd_returns_empty_when_absent`) pin the fix.
+
+### Added
+- **`ortim config` command group** with persistent user config at
+  `~/.ortim/config.toml` (overridable via `ORTIM_CONFIG` env). Removes
+  the need to keep a `.env` in every project directory — configure once,
+  use everywhere. POSIX writes are chmod 0600 so an `api_key` stays
+  per-user.
+  - `ortim config init` — interactive wizard (provider → model → key);
+    safe to re-run, preserves unrelated fields.
+  - `ortim config show` — tabular view with `Source` column (`config` /
+    `env` / `default`) so you can tell where each value came from.
+  - `ortim config path` — print resolved config path.
+  - `ortim config set-provider <name>`, `set-model <id>`,
+    `set-key <provider>` (prompts hidden), `set-role <role>` —
+    non-interactive setters for scripts.
+- **`--provider` / `--model` flags on `run` and `demo`** — highest-
+  precedence per-invocation override. `ortim demo --provider ollama` is
+  the path PyPI users with no API key can take to verify the install.
+- **Resolution precedence** (documented + tested): CLI flag → shell /
+  `.env` env var → `~/.ortim/config.toml` → hardcoded default. Config
+  values only populate env vars that are currently unset — operators
+  exporting `LLM_PROVIDER=ollama` in a shell always win.
+- **`ortim doctor` — new "Active LLM provider" check.** Reports the
+  resolved provider, its source, and whether the matching credential is
+  present. Replaces the guesswork when `ANTHROPIC_API_KEY: MISS` was
+  surfacing as noise even though the operator had deliberately chosen
+  DeepSeek or Ollama.
+
+### Changed
+- `LLMClient` missing-key error now names the resolved provider and
+  lists three fix paths (`ortim config init`, env var export, or
+  `--provider ollama` for a key-free local runtime). Surfaces the
+  intent gap directly instead of just naming the env var.
+- `ortim demo` key pre-flight consults the resolved provider, not a
+  hardcoded "anthropic or deepseek" check — so `--provider ollama`
+  proceeds past the pre-flight as intended. The original `test_demo_aborts_when_no_llm_key_present`
+  is updated to pin against the new error text plus a new
+  `test_demo_passes_when_provider_needs_no_key` covers the ollama path.
+
+### Tests
+- 14 new tests across `tests/test_config_store.py` (11 — roundtrip,
+  precedence, `env_source` labels, malformed-TOML tolerance, quote
+  escaping, path-override) and `tests/test_dotenv_cwd.py` (2 —
+  the regression itself) plus the demo `--provider ollama` coverage.
+  Full suite **746 → 760 (+14, zero existing-test regressions).**
+
+## [0.9.3] — 2026-05-18
+
+**Bug-fix and hardening pass** following a comprehensive manual test of v0.9.2.
+Each of five surveillance findings was reproduced first, then patched with a
+regression test. Verified on real workspaces (`079fb8862112`, `proofpoint48`,
+fresh init `ffe8d7eb0c2b`). Full test count 740 → 746 (+6 regression tests,
+zero existing-test regressions).
+
+### Fixed
+- `ortim budget` reported `$0.0000` for workspaces that had real audit data,
+  while `ortim retro` showed the correct cost from the same audit log. Root
+  cause: `budget` resolved the workspace ID via `discover_from_cwd` but
+  skipped `_resolve_project`, so `AUDIT_LOG_PATH` was never bound to the
+  per-workspace audit log; `BudgetTracker` then fell back to the default
+  global path and filter-by-project_id returned zero rows. `budget` now
+  routes through `_resolve_project` for the explicit-arg case and binds
+  the audit path explicitly in the cwd-discovery case, matching `retro`'s
+  contract. Three regression tests in `tests/test_cli_cwd_aware.py` lock
+  the fix (`test_budget_no_arg_discovers_cwd_and_binds_audit_path`,
+  `test_budget_explicit_id_binds_audit_path`,
+  `test_budget_matches_retro_for_same_workspace`).
+- `ortim retro` and `ortim budget` returned empty reports for legacy pool
+  workspaces (created before the v0.9.0 project-mode pivot). Pre-pivot
+  runs wrote audit events to the global default log
+  (`./ortim/audit/decisions.jsonl`), but the resolver pointed both
+  commands at `<workspace>/audit.jsonl` (which was never written). Both
+  commands now consult a second source — the global default audit log —
+  as a fallback for project-scoped queries, with `(timestamp, event,
+  task_id)` deduplication for rows that legitimately appear in both. The
+  fallback is only active when the caller asked for a specific
+  `project_id`; whole-log queries (`BudgetTracker.report()` with no
+  argument) still read the configured path alone, so global rollups
+  don't silently mix in extra audit sources. Two new regression tests
+  (`test_budget_pool_workspace_falls_back_to_global_audit`,
+  `test_budget_whole_log_query_does_not_silently_mix_global`) lock both
+  rules. Verified on real pool workspaces `079fb8862112` (23 calls,
+  $0.0350) and `proofpoint48` (12 calls, $0.0346).
+- `ortim status` (and any other cwd-aware command) no longer hits a
+  confusing `Workspace state not found at <path>` error when the
+  registry `current` pointer references a workspace whose `.ortim/`
+  was deleted out from under it (temp-dir reaper, manual `rm`, drive
+  change). `_resolve_current_pointer` now verifies `state_file` exists
+  before returning the location; on a stale pointer it falls through to
+  the standard `No project here. Run ortim init …` message. The
+  resolver stays read-only — the stale registry entry is left in place
+  so `ortim workspace doctor` still surfaces it as `path_missing`,
+  giving the user an explicit chance to migrate or remove the row.
+  Two new regression tests
+  (`test_resolve_workspace_skips_stale_current_pointer`,
+  `test_resolve_workspace_falls_through_to_friendly_error_when_current_stale`)
+  lock the silent-skip behavior.
+- Worker writes with whitespace in any path segment (e.g.
+  `API Client Module/lib/supabase.ts`) are now rejected by the sandbox.
+  The bug surfaced when an Architect labelled an RFC §7 module
+  `"API Client Module"` and the Orchestrator copied that verbatim into
+  `task.module_scope` per Hard Rule 13; the Worker then created an
+  unquotable path that breaks shell tooling on Windows/CI. Three
+  layers of defense: (a) `ortim.executor.sandbox.normalize_relative`
+  raises `SandboxViolation` on any whitespace inside a segment;
+  (b) `ortim.agents.orchestrator._parse_rfc_modules` and
+  `_find_unscoped_tasks` normalize both sides of the RFC ↔ DAG
+  comparison through a new `_normalize_module_name` helper
+  (lowercase, whitespace → `-`, drop chars outside `[a-z0-9_/-]`),
+  so kebab-case task scopes still match a Title Case RFC label
+  without losing the Item 42 subset check; (c) `agents/orchestrator.md`
+  Hard Rule 13 spells out the filesystem-safe form requirement and
+  gives examples. New regression tests:
+  `test_normalize_rejects_whitespace_in_segment` (sandbox),
+  `test_parse_rfc_modules_normalizes_whitespace_to_kebab` and
+  `test_find_unscoped_tasks_normalizes_task_side_too` (orchestrator).
+- Reviewer no longer defaults to
+  `unverifiable_reason: "test_infrastructure"` when the code itself has
+  compile-time problems a human reviewer would catch in five seconds.
+  Pre-fix symptom (phase-C smoke, workspace `5f729939b39d` T-001): the
+  Worker emitted `import { createClient } from '@supabase/supabase-js'`
+  AND `export function createClient()` in the same file — a TypeScript
+  redeclaration that wouldn't build. Because the test runner was
+  unconfigured, the Reviewer marked the runtime criterion
+  `unverifiable: test_infrastructure` and sent the operator chasing a
+  test-runner fix, while the real defect was a one-line code edit.
+  `agents/reviewer.md` now has a `Static sanity checks` section that
+  enumerates the obvious-broken patterns to flag (symbol
+  redeclaration, duplicate top-level declarations, self-referential
+  imports, unresolved imports, syntactic breaks) and makes the
+  decision order explicit: `fail` with code_quote BEFORE `unverifiable:
+  test_infrastructure`. Prompt content pinned by
+  `test_reviewer_prompt_teaches_static_sanity_checks_before_unverifiable`.
+
 ## [0.9.2] — 2026-05-18
 
 **Documentation pivot to English-canonical.** The PyPI page now leads with

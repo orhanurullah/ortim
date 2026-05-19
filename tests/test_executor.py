@@ -75,6 +75,25 @@ def test_normalize_rejects_parent_traversal() -> None:
         raise AssertionError(f"Expected SandboxViolation for {raw!r}")
 
 
+def test_normalize_rejects_whitespace_in_segment() -> None:
+    """G-C2 regression: the Worker once wrote `API Client Module/lib/...`
+    after the Orchestrator copied an RFC §7 label verbatim. Such paths
+    break shell quoting on Windows/CI; the sandbox MUST reject them so
+    a misconfigured DAG fails fast at the write site instead of producing
+    half-broken files."""
+    for raw in (
+        "API Client Module/lib/supabase.ts",
+        "auth/My Service.ts",
+        "src/my\tmodule/file.py",
+    ):
+        try:
+            normalize_relative(raw)
+        except SandboxViolation as e:
+            assert "whitespace" in str(e).lower()
+            continue
+        raise AssertionError(f"Expected SandboxViolation for {raw!r}")
+
+
 # ---------- check_in_scope ----------
 
 
@@ -361,6 +380,42 @@ def test_reviewer_prompt_teaches_stack_json_citation_discipline() -> None:
     # RFC §4 / drift relationship must be made explicit.
     assert "rfc §4" in p_lower or "rfc §4" in p_lower or "rfc section 4" in p_lower
     assert "drift" in p_lower
+
+
+def test_reviewer_prompt_teaches_static_sanity_checks_before_unverifiable() -> None:
+    """G-C1 fix: agents/reviewer.md must teach the LLM to do lightweight
+    static inspection (symbol redeclaration, duplicate top-level decls,
+    unresolved imports) BEFORE defaulting to
+    `unverifiable: test_infrastructure` when tests are skipped. Pre-fix
+    symptom (phase-C smoke, workspace 5f729939b39d T-001): Worker emitted
+    `import { createClient } from '@supabase/supabase-js'` AND
+    `export function createClient()` in the same file — a TypeScript
+    redeclaration that wouldn't compile. Reviewer marked the runtime
+    criterion `unverifiable: test_infrastructure` because tests were
+    skipped; the operator was sent to fix the test runner, but the real
+    fix was a one-line code edit the Reviewer should have caught.
+    """
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent
+    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    p_lower = prompt.lower()
+
+    # The new section must exist and be discoverable.
+    assert "static sanity" in p_lower or "static check" in p_lower
+
+    # Symbol-redeclaration is the proof-point pattern — name it explicitly.
+    assert "redeclar" in p_lower or "shadow" in p_lower
+
+    # The createClient example from the proof-point should appear so the
+    # LLM has a concrete pattern to match.
+    assert "createClient" in prompt or "createclient" in p_lower
+
+    # The decision rule — these checks happen BEFORE choosing
+    # `unverifiable: test_infrastructure`.
+    assert (
+        "before" in p_lower and "unverifiable" in p_lower
+    ), "decision order must be explicit"
 
 
 def test_review_verdict_test_infrastructure_reason_tags_distinctly() -> None:

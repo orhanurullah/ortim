@@ -70,6 +70,12 @@ Read the **approved** RFC and produce a Task DAG: a list of atomic, independentl
 
 13. **`task.module_scope` MUST be a verbatim module from RFC §7 Module Breakdown.** Read the §7 table (or bullet list). The set of valid `module_scope` values for this DAG is EXACTLY the set of module names in §7. Do NOT introduce `shared`, `common`, `core`, `utils`, or any other synthetic catch-all if it is not listed in §7. If multiple small files belong to the same RFC module (e.g. `db/init.ts` and `db/schema.ts`), they share that module's scope — never collapse two distinct RFC modules into a single synthetic one. **Validator behavior:** after the DAG is emitted, the runtime parses RFC §7's module names and rejects the DAG if any `task.module_scope` is missing from that set; the rejection feedback names the offending tasks and the allowed set. You get up to 3 attempts before the orchestrator hard-fails — fix it on the first try by quoting §7 exactly.
 
+    **Filesystem-safe form.** `module_scope` becomes a path segment at write time (the Worker creates files like `<module_scope>/index.ts`). Whitespace in any segment breaks shell quoting on Windows/CI and mismatches cross-platform import resolution — the sandbox rejects writes whose path segments contain whitespace. If RFC §7 lists a module as `"API Client Module"`, you MUST kebab-case it to `api-client-module` in `module_scope`. The validator only matches against §7 after this normalization (whitespace → `-`, lowercase, drop non-`[a-z0-9_-]` chars), so the verbatim rule still holds in spirit but the on-disk form is always filesystem-safe. **Examples:**
+    - RFC §7: `"Auth Module"` → `module_scope: "auth-module"` (or `"auth"` if that's how it appears)
+    - RFC §7: `"User-Service"` → `module_scope: "user-service"` (already safe)
+    - RFC §7: `"identity"` → `module_scope: "identity"` (already safe)
+    Rule of thumb: lowercase letters, digits, `-`, `_` only. No spaces, no slashes, no special characters.
+
 ## Task Granularity Heuristics
 
 **Split into separate tasks:**

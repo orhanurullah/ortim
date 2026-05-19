@@ -10,7 +10,7 @@
 pip install ortim
 ```
 
-Requires Python ≥ 3.11 and an LLM API key (DeepSeek or Anthropic).
+Requires Python ≥ 3.11. After install, run `ortim config init` to pick a provider (DeepSeek / Anthropic / local Ollama) and store credentials — no `.env` setup needed.
 
 ---
 
@@ -124,7 +124,17 @@ Full specification: **[Ortim_Architecture.md](Ortim_Architecture.md)** (currentl
 
 ## Multi-provider routing
 
-Ortim routes each agent role to its own LLM provider. Most production setups use DeepSeek-only for budget reasons; route Architect and Security Reviewer to Anthropic when judgement matters.
+Ortim routes each agent role to its own LLM provider. Most production setups use DeepSeek-only for budget reasons; route Architect and Security Reviewer to Anthropic when judgement matters. No API key at hand? Use Ollama locally.
+
+**Recommended path — `ortim config init` (0.9.4+).** Interactive wizard writes `~/.ortim/config.toml`. No `.env` required, works from any directory:
+
+```bash
+ortim config init                # pick provider → model → key, once
+ortim config show                # verify what's resolved, with source per field
+ortim config set-role architect --provider anthropic   # role override
+```
+
+**Or set env vars** (still supported — `~/.ortim/config.toml` only fills gaps, never overrides):
 
 ```ini
 # .env — minimal
@@ -136,9 +146,19 @@ ARCHITECT_PROVIDER=anthropic
 SECURITY_REVIEWER_PROVIDER=anthropic
 ```
 
+**Per-invocation override** — highest precedence:
+
+```bash
+ortim run --provider ollama --model qwen2.5-coder:7b
+ortim demo --provider ollama          # try the demo with zero API keys
+```
+
+Resolution order: `--provider` flag → shell / `.env` env var → `~/.ortim/config.toml` → hardcoded default.
+
 Approximate costs on observed proof-point runs (TR brief, 6–8 tasks, 80 %+ first-attempt approval):
 - DeepSeek-only: **$0.02–0.05** per planning chain, **$0.02–0.04** per task execution.
 - Hybrid (Architect + SecRev on Anthropic): **$0.05–0.10** planning, **$0.04–0.08** per task.
+- Ollama-only: **$0.00** (local; throughput depends on hardware).
 
 Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compatible endpoint.
 
@@ -149,6 +169,8 @@ Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compa
 ```bash
 # Health + setup
 ortim doctor
+ortim config init                  # one-time provider/key wizard
+ortim config show                  # what's active + where it came from
 
 # New project (project mode — cwd-aware)
 mkdir ~/dev/cool && cd ~/dev/cool

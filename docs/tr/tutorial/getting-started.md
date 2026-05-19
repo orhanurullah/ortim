@@ -36,34 +36,70 @@ pip install -e .
 
 `pip install -e .` editable mode'da kurar — repo dosyalarını değiştirdiğinde `ortim` komutu güncel kalır.
 
-### 1.2 API key'ler — `.env` dosyası
+### 1.2 LLM provider — `ortim config init` (0.9.4+)
 
-Repo kökünde `.env.example` var. Kopyala:
+En kolay yol: interaktif wizard. `~/.ortim/config.toml`'a bir kere yazar, her dizinde geçerli olur — proje başına `.env` kopyalamak gerekmez.
 
 ```bash
-cp .env.example .env
+ortim config init
 ```
 
-`.env` içine en az birini ekle:
+Üç şey sorar:
+1. **Provider** — `anthropic` (Claude), `deepseek` (Anthropic-uyumlu, ucuz) veya `ollama` (lokal, API key yok).
+2. **Default model** — provider default'unu kabul et veya kendin seç.
+3. **API key** — gizli input; `ollama` için sorulmaz (lokal çalışır).
+
+Ne aktif, nereden geliyor:
+
+```bash
+ortim config show
+# │ default provider  │ deepseek        │ config  │
+# │ default model     │ deepseek-chat   │ config  │
+# │ deepseek api key  │ set (length 35) │ config  │
+```
+
+`Source` kolonu hangi katmandan geldiğini söyler: `config` (wizard), `env` (shell/`.env`), `default` (hardcoded).
+
+**Rol bazlı override** — yüksek hacimli işi ucuz modele, kritik çağrıları premium'a:
+
+```bash
+ortim config set-role architect --provider anthropic
+ortim config set-role babel --provider deepseek
+```
+
+**Tek komutluk override** — config'i kalıcı değiştirmeden:
+
+```bash
+ortim run --provider ollama --model qwen2.5-coder:7b
+ortim demo --provider ollama        # demo'yu sıfır API key ile dene
+```
+
+**Çözünürlük sırası** (en yüksek öncelik üstte):
+1. `--provider` / `--model` CLI flag
+2. Shell veya `.env` env vars (`LLM_PROVIDER`, `DEEPSEEK_API_KEY`, rol-spesifik `BABEL_PROVIDER`, ...)
+3. `~/.ortim/config.toml`
+4. Hardcoded default (`anthropic` + `claude-opus-4-7`)
+
+**Alternatif — `.env` dosyası.** Hâlâ tam destekli. `ortim` çalıştırdığın dizine `.env` koy:
 
 ```ini
-# Tercih edilen — ucuz, hızlı, hepsi-DeepSeek routing'i çalışır
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+LLM_PROVIDER=deepseek
 
-# Opsiyonel — Architect/Reviewer kritik rolleri için "premium" model isteğin varsa
+# Opsiyonel — kritik rolleri Claude'a yönlendir
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ARCHITECT_PROVIDER=anthropic
+SECURITY_REVIEWER_PROVIDER=anthropic
 
 # Opsiyonel — proje başına maliyet üst sınırı (USD)
 ORTIM_BUDGET_CAP_USD=2.00
 ```
 
-**Neden ikisi de opsiyonel ama DEEPSEEK_API_KEY pratik gereklilik?**
+> **0.9.4 öncesi `.env` bug'ı:** PyPI install'ında `.env` cwd'den değil install lokasyonundan aranıyordu — projenin `.env`'i sessizce ignore ediliyordu. 0.9.4+ ile çözüldü; eski sürümdesen `pip install --upgrade ortim`.
 
-Ortim **multi-provider** — her ajan rolü ayrı bir provider'a yönlendirilebilir. Hiç provider key'i yoksa LLM çağrısı yapan komutlar (`new`, `run`, `demo`, `run-all`, `extend`) çalışmaz; ama deterministic komutlar (`status`, `tasks`, `drift-check`, `score-tier`, `retro`) provider olmadan da çalışır.
+**Hiç key'in yoksa?** Lokal Ollama tek başına yeterli: [ollama.com](https://ollama.com)'dan kur, `ollama pull qwen2.5-coder:7b`, sonra `ortim config set-provider ollama`. Pipeline tamamen çalışır, aylık fatura sıfır.
 
-Yalnız DeepSeek key'i ile sistem tamamen işler. Anthropic key'i eklersen kritik rolleri (Architect, SecurityReviewer) Anthropic'e yönlendirebilirsin (`.env`'de `ARCHITECT_PROVIDER=anthropic` gibi). Maliyet ~10× artar, kalite kısmi olarak artar — ekibin priority'sine göre seç.
-
-**DeepSeek key'i nasıl alınır?** [platform.deepseek.com](https://platform.deepseek.com) → Sign up → API Keys → Create. İlk $5 free credit gelir; bir planning chain ~$0.01 olduğundan 500 proje free.
+**DeepSeek key'i nasıl alınır?** [platform.deepseek.com](https://platform.deepseek.com) → Sign up → API Keys → Create. İlk $5 free credit; bir planning chain ~$0.01 olduğundan ~500 proje free.
 
 ### 1.3 Workspace pattern — Project Mode (0.9+)
 
@@ -113,18 +149,19 @@ ortim doctor
 ```
 Ortim doctor — Environment health check
 
-┌────────────────────┬────────┬────────────────────────────────┐
-│ Check              │ Status │ Detail                         │
-├────────────────────┼────────┼────────────────────────────────┤
-│ Python ≥ 3.11      │   OK   │ 3.14.0                         │
-│ DEEPSEEK_API_KEY   │   OK   │ set (length 35)                │
-│ ANTHROPIC_API_KEY  │  MISS  │ not set                        │
-│ Node.js            │   OK   │ v24.11.1 (T1-T4 web)           │
-│ npm                │   OK   │ 11.6.4                         │
-│ Flutter            │   OK   │ Flutter 3.38.3                 │
-│ Go                 │   --   │ not installed                  │
-│ Skills directory   │   OK   │ 7 skill file(s)                │
-└────────────────────┴────────┴────────────────────────────────┘
+┌─────────────────────┬────────┬───────────────────────────────────────────────┐
+│ Check               │ Status │ Detail                                        │
+├─────────────────────┼────────┼───────────────────────────────────────────────┤
+│ Python ≥ 3.11       │   OK   │ 3.14.0                                        │
+│ Active LLM provider │   OK   │ deepseek (source: config; DEEPSEEK_API_KEY set) │
+│ DEEPSEEK_API_KEY    │   OK   │ set (length 35)                               │
+│ ANTHROPIC_API_KEY   │  MISS  │ not set                                       │
+│ Node.js             │   OK   │ v24.11.1 (T1-T4 web)                          │
+│ npm                 │   OK   │ 11.6.4                                        │
+│ Flutter             │   OK   │ Flutter 3.38.3                                │
+│ Go                  │   --   │ not installed                                 │
+│ Skills directory    │   OK   │ 7 skill file(s)                               │
+└─────────────────────┴────────┴───────────────────────────────────────────────┘
 
 required: 5/5  recommended: 4/5  optional: 5/6
 ```
@@ -232,7 +269,7 @@ Initialized 7f3a2b9c1d4e (cool-project, greenfield)
 Path: /home/you/dev/cool-project
 State: intake
 
-Next: ortim run (Babel + Analyst; ANTHROPIC_API_KEY veya DEEPSEEK_API_KEY gerekir)
+Next: ortim run (Babel + Analyst; önce `ortim config init` ile provider seç)
 ```
 
 `.ortim/` dizini şimdi cwd'de var. Bundan sonraki tüm komutlar — `run`, `status`, `scope`, `tasks`, `run-all`, ... — bu dizinden veya alt-dizinlerinden çalıştırılırsa otomatik bu workspace'i seçer.
@@ -407,9 +444,17 @@ Ortim deterministic state machine + audit trail ile "AI ne yaptı" sorusunu ceva
 
 ## 6. Yaygın sorunlar + çözümleri
 
-### 6.1 "DEEPSEEK_API_KEY not set"
+### 6.1 "DEEPSEEK_API_KEY is not set (resolved provider: 'deepseek')"
 
-`.env` dosyası doğru yerde mi? Repo kökünde olmalı. Dosyayı kaydedip yeni terminal aç (env vars cache'lenebilir).
+Üç çözüm yolu — sana uygun olanı seç:
+
+1. **Wizard çalıştır** (önerilen, her dizinden çalışır): `ortim config init`.
+2. **Env var olarak set et** — shell'de (`export DEEPSEEK_API_KEY=...`) veya çalıştırdığın dizindeki `.env` dosyasında. Düzenledikten sonra yeni terminal aç (eski terminal'de env cache'lenebilir).
+3. **Bu komut için farklı provider** kullan: `ortim run --provider ollama` (lokal, key yok) veya `--provider anthropic`.
+
+Yanlış provider çözüldüyse: `ortim config show` aktif provider'ı + kaynağı bastırır. Hızlı tanı için `ortim doctor` çıktısında "Active LLM provider" satırına bak.
+
+**0.9.4 öncesi bug:** PyPI install'ında `.env` cwd'den değil install lokasyonundan (site-packages) aranıyordu — `LLM_PROVIDER=deepseek` yazsan bile sistem `ANTHROPIC_API_KEY` istiyordu. 0.9.4 ile düzeldi: `pip install --upgrade ortim`.
 
 ### 6.2 Architect yanlış tier seçti
 

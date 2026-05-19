@@ -29,12 +29,21 @@ class SandboxViolation(Exception):
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 
 
+_WHITESPACE_IN_SEGMENT = re.compile(r"\s")
+
+
 def normalize_relative(raw: str) -> PurePosixPath:
-    """Reject absolute paths, `..` escapes, empty paths.
+    """Reject absolute paths, `..` escapes, empty paths, whitespace segments.
 
     Returns a clean POSIX-style relative path with `.` segments stripped.
     `PurePosixPath.is_absolute()` only catches `/...`-style absolutes, so we
     explicitly reject Windows drive letters (`C:\\...`, `D:/...`) up front.
+
+    Whitespace inside any segment (e.g. `API Client Module/lib/supabase.ts`)
+    is also rejected: such paths break shell quoting on Windows/CI, mismatch
+    cross-platform import resolution, and signal an Orchestrator that
+    forgot to kebab-case an RFC module name. The Worker has to emit a
+    filesystem-safe path; whitespace is never one.
     """
     if not raw or not raw.strip():
         raise SandboxViolation("empty path")
@@ -48,6 +57,12 @@ def normalize_relative(raw: str) -> PurePosixPath:
         raise SandboxViolation(f"parent traversal forbidden: {raw}")
     if not parts:
         raise SandboxViolation(f"path resolves to nothing: {raw}")
+    for part in parts:
+        if _WHITESPACE_IN_SEGMENT.search(part):
+            raise SandboxViolation(
+                f"whitespace in path segment forbidden: {raw} "
+                f"(segment {part!r}; use kebab-case or snake_case)"
+            )
     return PurePosixPath(*parts)
 
 

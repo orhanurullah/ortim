@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import typer
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from rich.console import Console
 from rich.table import Table
 
@@ -37,9 +37,24 @@ from ortim.orchestrator import (
     bootstrap_brownfield,
 )
 
-load_dotenv()
+# Walk up from the user's CWD, not from main.py's install location.
+# PyPI installs put main.py in site-packages; walking up from there never
+# reaches the user's project directory. `usecwd=True` makes `find_dotenv`
+# start from `os.getcwd()` and walk up, which matches operator intent.
+load_dotenv(find_dotenv(usecwd=True))
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.2)")
+# Layer user config (`~/.ortim/config.toml`) on top of env vars. The
+# config store only populates env vars that are currently unset, so
+# shell/.env values always win. This lets PyPI users configure a
+# provider once without needing a `.env` in every project directory.
+from ortim.config import apply_to_env as _apply_user_config_to_env
+from ortim.config import load as _load_user_config
+
+_user_cfg = _load_user_config()
+if _user_cfg is not None:
+    _apply_user_config_to_env(_user_cfg)
+
+app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.4)")
 console = Console()
 
 # Deprecation: the `ai-factory` CLI alias is kept for backwards
@@ -115,6 +130,26 @@ def _resolve_project(arg: str | None):
         raise typer.Exit(1)
     os.environ["AUDIT_LOG_PATH"] = str(store.audit_log_path())
     return project, store, location
+
+
+def _apply_invocation_overrides(
+    provider: str | None = None,
+    model: str | None = None,
+) -> None:
+    """Promote `--provider`/`--model` flags into env for this process.
+
+    The router reads `LLM_PROVIDER` / `DEFAULT_MODEL` from env, so the
+    simplest plumbing is to set those vars when the flag is given. This
+    also propagates correctly across `demo`'s subprocess chain since
+    subprocesses inherit env by default.
+
+    Empty/None values are ignored — passing nothing leaves the existing
+    resolution (env → config → default) intact.
+    """
+    if provider:
+        os.environ["LLM_PROVIDER"] = provider.strip().lower()
+    if model:
+        os.environ["DEFAULT_MODEL"] = model.strip()
 
 
 def _block_if_archived(project, action: str = "modify") -> None:
@@ -865,6 +900,17 @@ def run(
     step: str = typer.Option(
         "auto", help="babel | analyst | architect | orchestrator | auto"
     ),
+    provider: str = typer.Option(
+        None, "--provider",
+        help="LLM provider override (anthropic | deepseek | ollama). "
+        "Applies to every role this invocation; equivalent to exporting "
+        "LLM_PROVIDER for this command only.",
+    ),
+    model: str = typer.Option(
+        None, "--model",
+        help="Model id override (e.g. claude-opus-4-7). Applies globally "
+        "this invocation; per-role env vars still win.",
+    ),
 ) -> None:
     """Projeyi bir veya birden fazla state ileri taşı (ajan çağrısıyla)."""
     from ortim.agents import AnalystAgent, ArchitectAgent, OrchestratorAgent
@@ -872,6 +918,12 @@ def run(
     from ortim.babel import BabelLayer, StructuredIntent
     from ortim.llm import client_for
     from ortim.memory import MemoryLoader
+
+    # CLI flags layer ABOVE env: setting them here overrides whatever
+    # config/.env supplied, but per-role vars (BABEL_PROVIDER etc.) the
+    # router consults still take precedence — matches operator intent
+    # when they pin a role and override the global with a flag.
+    _apply_invocation_overrides(provider=provider, model=model)
 
     project, store, _ = _resolve_project(project_id)
     _block_if_archived(project, action="run agents")
@@ -2491,6 +2543,12 @@ def scope(
 skill_app = typer.Typer(help="M3 skills inspection.", no_args_is_help=True)
 app.add_typer(skill_app, name="skill")
 
+# `ortim config` — persistent provider/model/key config at ~/.ortim/.
+# Mounted as a subapp so the wizard + show + setters live in their own
+# module rather than ballooning main.py.
+from ortim.config.cli import config_app as _config_app
+app.add_typer(_config_app, name="config")
+
 # 3-PMP M6 — `ortim workspace` subcommand namespace.
 # Top-level commands (`ls`, `use`, `list-projects`) keep their place for
 # backwards compatibility with v0.8.x shell history and docs; the
@@ -3964,17 +4022,23 @@ def budget(
     """Token kullanım ve maliyet raporu (default: cwd projesi varsa onu, yoksa toplam)."""
     from ortim.budget import BudgetTracker
 
-    # arg verilirse direkt kullan; verilmezse cwd discovery dene; başarısızsa
-    # global rapor. --all flag'i discovery'i atlatır.
+    # arg verilirse resolver üzerinden AUDIT_LOG_PATH bind et (pool + project
+    # mode tek yoldan); arg verilmediyse cwd discovery dene ve aynı bind'i
+    # uygula; başarısızsa global default audit'e düş. --all discovery'yi atlatır.
     effective_id = project_id
-    if effective_id is None and not all_projects:
-        from ortim.workspace import discover_from_cwd, ProjectStore
+    if not all_projects:
+        if project_id is not None:
+            project, _, _ = _resolve_project(project_id)
+            effective_id = project.id
+        else:
+            from ortim.workspace import discover_from_cwd, ProjectStore
 
-        loc = discover_from_cwd()
-        if loc is not None:
-            store = ProjectStore(loc)
-            if store.exists():
-                effective_id = store.load().id
+            loc = discover_from_cwd()
+            if loc is not None:
+                store = ProjectStore(loc)
+                if store.exists():
+                    effective_id = store.load().id
+                    os.environ["AUDIT_LOG_PATH"] = str(store.audit_log_path())
 
     tracker = BudgetTracker()
     report = tracker.report(effective_id)
@@ -4028,6 +4092,15 @@ def demo(
         False, "--execute",
         help="Also execute T-001 after planning (adds ~$0.05 LLM cost)",
     ),
+    provider: str = typer.Option(
+        None, "--provider",
+        help="LLM provider for the whole chain (anthropic | deepseek | "
+        "ollama). Propagates to every subprocess step via env.",
+    ),
+    model: str = typer.Option(
+        None, "--model",
+        help="Model id override for the whole chain.",
+    ),
 ) -> None:
     """End-to-end planning demo — brief → PRD → RFC → DAG in one command.
 
@@ -4044,15 +4117,31 @@ def demo(
     import subprocess
     import time
 
-    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-    has_deepseek = bool(os.environ.get("DEEPSEEK_API_KEY", "").strip())
-    if not (has_anthropic or has_deepseek):
-        console.print(
-            "[red]No LLM API key set.[/red] Run [cyan]ortim doctor[/cyan] "
-            "for env status. Set DEEPSEEK_API_KEY or ANTHROPIC_API_KEY "
-            "and try again."
-        )
+    # Apply CLI overrides FIRST so the key check below sees the right
+    # provider's key (e.g. --provider ollama needs no key at all).
+    _apply_invocation_overrides(provider=provider, model=model)
+
+    # Check that the resolved provider has whatever credentials it needs.
+    # Local providers (api_key_env=None, e.g. ollama) pass unconditionally.
+    from ortim.llm.providers import resolve_provider
+    try:
+        active = resolve_provider()
+    except Exception as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
+    if active.api_key_env is not None:
+        if not os.environ.get(active.api_key_env, "").strip():
+            console.print(
+                f"[red]{active.api_key_env} is not set[/red] "
+                f"(resolved provider: '{active.name}').\n"
+                f"Fix one of:\n"
+                f"  - [cyan]ortim config init[/cyan] to configure a "
+                f"provider once\n"
+                f"  - export {active.api_key_env}=... or add to .env\n"
+                f"  - rerun with [cyan]--provider ollama[/cyan] for a "
+                f"local, key-free runtime"
+            )
+            raise typer.Exit(code=1)
 
     _ensure_workspace_root()
     project_name = f"demo-{int(time.time())}"

@@ -51,10 +51,12 @@ def test_parse_rfc_modules_from_markdown_table() -> None:
         "| `types` | TS interfaces | Task type | `Task` |\n\n"
         "## 8. API Surface\n"
     )
+    # Module names are normalized to a filesystem-safe form: lowercased,
+    # whitespace collapsed to `-`. `/` is preserved for nested modules.
     assert _parse_rfc_modules(rfc) == {
         "db",
         "store",
-        "components/TaskForm",
+        "components/taskform",
         "types",
     }
 
@@ -93,6 +95,32 @@ def test_parse_rfc_modules_returns_none_when_section_empty() -> None:
     validator skips rather than rejecting every task."""
     rfc = "## 7. Module Breakdown\n\n(TBD)\n\n## 8.\n"
     assert _parse_rfc_modules(rfc) is None
+
+
+def test_parse_rfc_modules_normalizes_whitespace_to_kebab() -> None:
+    """G-C2: an Architect that writes `"API Client Module"` in §7 must not
+    cause downstream sandbox failures. The parser normalizes whitespace
+    so the validator can compare against the Orchestrator's kebab-case
+    form without spurious mismatches."""
+    rfc = (
+        "## 7. Module Breakdown\n\n"
+        "| Module | Responsibility |\n|---|---|\n"
+        "| `API Client Module` | supabase client init |\n"
+        "| `Auth Module` | login/logout |\n\n"
+        "## 8.\n"
+    )
+    assert _parse_rfc_modules(rfc) == {"api-client-module", "auth-module"}
+
+
+def test_find_unscoped_tasks_normalizes_task_side_too() -> None:
+    """A task emitting kebab-case `module_scope` must match an RFC §7
+    label written with whitespace — both sides go through the normalizer."""
+    rfc_modules = {"api-client-module", "auth-module"}
+    dag = _dag_with_scopes([
+        ("T-001", "api-client-module"),
+        ("T-002", "Auth Module"),  # raw RFC label form
+    ])
+    assert _find_unscoped_tasks(dag, rfc_modules) == []
 
 
 # ---------------------------------------------------------------------------

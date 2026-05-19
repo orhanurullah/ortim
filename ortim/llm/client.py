@@ -111,9 +111,21 @@ class LLMClient:
             if not key:
                 key = os.getenv(self.config.api_key_env)
             if not key:
+                # Surface the resolved provider in the error so the
+                # operator knows WHICH key the runtime expected — a
+                # common confusion when LLM_PROVIDER is set but the
+                # corresponding key is not, or vice versa.
                 raise RuntimeError(
-                    f"{self.config.api_key_env} not set. "
-                    f"Configure .env or export the variable."
+                    f"{self.config.api_key_env} is not set "
+                    f"(resolved provider: '{self.config.name}'). "
+                    f"Fix one of:\n"
+                    f"  - run `ortim config init` to configure a "
+                    f"provider once\n"
+                    f"  - set {self.config.api_key_env}=... in your "
+                    f"shell or .env\n"
+                    f"  - or pass `--provider <name>` to the command "
+                    f"(e.g. --provider ollama for a local, key-free "
+                    f"runtime)"
                 )
         self.api_key: str | None = key
 

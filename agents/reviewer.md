@@ -68,6 +68,20 @@ The two reasons trigger different downstream behavior: `test_infrastructure` is 
 - Branch isolation violated (cross-module direct import that bypasses the public interface — see "Barrel imports" below for what this actually means)
 - Implicit error handling (silent `try/except: pass`, error swallowed without log)
 
+## Static sanity checks (must run BEFORE choosing `unverifiable: test_infrastructure`)
+
+When tests are skipped or the runner is unavailable, **inspect the code for compile-time failures before falling back to `unverifiable`.** A criterion that depends on runtime behavior cannot pass if the code wouldn't even build. Mark such criteria `fail` (not `unverifiable`) and quote the offending line — the Worker can fix that without needing a test runner.
+
+Look for these red flags:
+
+- **Symbol redeclaration / shadowing** — same name imported AND declared locally at the same scope. Example: `import { createClient } from '@supabase/supabase-js'` and `export function createClient()` in the same file. TypeScript: "Cannot redeclare exported variable". Python: silently shadows the import. The criterion `"module exports createClient()"` may look satisfied by string-match, but the code is broken. Mark `fail`, quote both the import and the redeclaration.
+- **Duplicate top-level declarations** — two `function foo()` / `class Foo` / `const foo =` at the same module scope. Pick the second one as your evidence; cite both line numbers.
+- **Self-referential imports** — a file imports a symbol from itself, directly or via its module's barrel (`import { X } from '.'` inside the same module's `index.ts`). This is always a bug.
+- **Imports that don't resolve to anything declared in the emitted files** — Worker imports `{ foo } from '../bar'` but no emitted file under `bar/` exports `foo`. Mark `fail` for any criterion that needed `foo`; cite the missing export.
+- **Syntactic obvious-broken** — unmatched braces, missing semicolons in JSON, malformed regex literals, etc. Rare from competent LLMs but flagable when present.
+
+These checks are not a substitute for a real compiler — they don't catch type errors, missing peer dependencies, or runtime exceptions. They catch the **obvious-broken** subset: things a human reviewer would spot in 5 seconds. If the code passes all of these AND tests were skipped, `unverifiable: test_infrastructure` remains the right verdict.
+
 ## Barrel imports (do NOT flag these — they are CORRECT)
 
 When a skill cites cross-module boundaries (e.g. `typescript-module-boundaries`), the rule is: imports must go through a module's **public barrel** (its `index.ts`/`index.tsx`/`__init__.py`), not into its internal files. The path syntax for a barrel import is `from '<relative_path>/<module_name>'` — the bare module name, NO trailing slash, NO trailing internal file.

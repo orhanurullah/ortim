@@ -280,3 +280,70 @@ def test_resolve_workspace_corrupt_registry_falls_through(
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "no-such-pool"))
     with pytest.raises(WorkspaceNotFound):
         resolve_workspace(arg="anything", cwd=tmp_path)
+
+
+def test_resolve_workspace_skips_stale_current_pointer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-A1 regression: registry `current` points at a workspace whose
+    state.json was deleted (temp-dir reaper, manual rm, drive change).
+    Resolver must NOT return the broken location — falling through to
+    the friendly `No project here` error beats opening a workspace at
+    a path the OS already deleted."""
+    home = tmp_path / "ortim_home"
+    home.mkdir()
+    ghost = tmp_path / "deleted-app"  # registry entry, but no anchor on disk
+    registry = {
+        "version": 1,
+        "current": "deleted-7a3b",
+        "workspaces": {
+            "deleted-7a3b": {
+                "id": "deleted-7a3b",
+                "name": "deleted-app",
+                "path": str(ghost),
+                "mode": "project",
+            }
+        },
+    }
+    (home / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
+    monkeypatch.setenv("ORTIM_HOME", str(home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "no-such-pool"))
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    with pytest.raises(WorkspaceNotFound):
+        resolve_workspace(arg=None, cwd=elsewhere)
+
+
+def test_resolve_workspace_falls_through_to_friendly_error_when_current_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the stale `current` is skipped, cwd discovery has also failed,
+    AND there's no pool match — the user gets the standard `No project
+    here` guidance, not an opaque FileNotFoundError from a downstream
+    `ProjectStore.load()`."""
+    home = tmp_path / "ortim_home"
+    home.mkdir()
+    registry = {
+        "version": 1,
+        "current": "ghost",
+        "workspaces": {
+            "ghost": {
+                "id": "ghost",
+                "name": "ghost",
+                "path": str(tmp_path / "never-existed"),
+                "mode": "project",
+            }
+        },
+    }
+    (home / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
+    monkeypatch.setenv("ORTIM_HOME", str(home))
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    try:
+        resolve_workspace(arg=None, cwd=elsewhere)
+    except WorkspaceNotFound as exc:
+        assert "ortim init" in str(exc)
+        return
+    raise AssertionError("expected WorkspaceNotFound, got success")

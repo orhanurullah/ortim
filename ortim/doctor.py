@@ -257,6 +257,67 @@ def check_deepseek_key() -> DoctorCheck:
     )
 
 
+def check_active_provider() -> DoctorCheck:
+    """Report which LLM provider would be selected for an LLM call right
+    now, and whether the matching credential is present.
+
+    This is the one check operators actually need when an LLM call fails
+    — `ANTHROPIC_API_KEY: MISS` is noise if the operator deliberately
+    picked DeepSeek or Ollama. Surfacing the resolved provider + source
+    + key status in a single line removes the guesswork.
+    """
+    try:
+        from ortim.config import env_source
+        from ortim.llm.providers import resolve_provider
+    except Exception as e:
+        return DoctorCheck(
+            "Active LLM provider",
+            STATUS_WARNING,
+            f"could not resolve: {type(e).__name__}: {e}",
+            CAT_RECOMMENDED,
+        )
+
+    try:
+        provider = resolve_provider()
+    except Exception as e:
+        return DoctorCheck(
+            "Active LLM provider",
+            STATUS_MISSING,
+            f"resolution failed: {e}",
+            CAT_RECOMMENDED,
+            fix_hint="run `ortim config init` to pick a valid provider",
+        )
+
+    source = env_source("LLM_PROVIDER")
+    if provider.api_key_env is None:
+        return DoctorCheck(
+            "Active LLM provider",
+            STATUS_OK,
+            f"{provider.name} (source: {source}; no key required)",
+            CAT_RECOMMENDED,
+        )
+    key_set = bool(os.environ.get(provider.api_key_env, "").strip())
+    if key_set:
+        return DoctorCheck(
+            "Active LLM provider",
+            STATUS_OK,
+            f"{provider.name} (source: {source}; {provider.api_key_env} set)",
+            CAT_RECOMMENDED,
+        )
+    return DoctorCheck(
+        "Active LLM provider",
+        STATUS_MISSING,
+        f"{provider.name} selected (source: {source}) but "
+        f"{provider.api_key_env} is not set",
+        CAT_RECOMMENDED,
+        fix_hint=(
+            f"run `ortim config set-key {provider.name}`, export "
+            f"{provider.api_key_env}=..., or pick another provider "
+            f"with `ortim config set-provider`"
+        ),
+    )
+
+
 def check_git() -> DoctorCheck:
     version = _which_version("git")
     if version:
@@ -451,6 +512,7 @@ def run_all_checks(
         check_l1_principles(repo_root),
         check_agent_prompts(repo_root),
         # Recommended
+        check_active_provider(),
         check_anthropic_key(),
         check_deepseek_key(),
         check_git(),

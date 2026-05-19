@@ -132,6 +132,195 @@ def test_inspect_no_arg_greenfield_says_not_brownfield(project_dir: Path) -> Non
     assert "not a brownfield" in result.output.lower()
 
 
+# ---------------- budget ----------------
+
+
+def _seed_audit_entry(audit_path: Path, project_id: str) -> None:
+    """Write a single audit row with token data so budget has something to sum."""
+    import json as _json
+
+    entry = {
+        "prev_hash": "0" * 64,
+        "timestamp": "2026-05-18T00:00:00+00:00",
+        "event": "worker_output_ok",
+        "category": "worker",
+        "project_id": project_id,
+        "task_id": "T-001",
+        "tokens": {"in": 1000, "out": 500},
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+    }
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as f:
+        f.write(_json.dumps(entry) + "\n")
+
+
+def test_budget_no_arg_discovers_cwd_and_binds_audit_path(project_dir: Path) -> None:
+    """Regression for G-A3: budget without arg must bind AUDIT_LOG_PATH to the
+    cwd workspace's audit log, not read the default (empty) global path."""
+    from ortim.workspace import ProjectStore, resolve_workspace
+
+    loc = resolve_workspace(arg=None)
+    project = ProjectStore(loc).load()
+    _seed_audit_entry(loc.metadata_dir / "audit.jsonl", project.id)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["budget"])
+    assert result.exit_code == 0, result.output
+    assert "LLM calls" in result.output
+    # 1 entry with 1000 input + 500 output tokens — not zero.
+    assert "1,500" in result.output or "1500" in result.output, result.output
+
+
+def test_budget_explicit_id_binds_audit_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for G-A3: budget <id> must route through _resolve_project
+    so the workspace's audit log is bound, even for pool-layout workspaces."""
+    pool_root = tmp_path / "workspaces"
+    pool_root.mkdir()
+    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
+
+    from ortim.orchestrator import Project
+
+    project = Project(name="pool-app", initial_brief_tr="x")
+    project.save(pool_root)
+    _seed_audit_entry(pool_root / project.id / "audit.jsonl", project.id)
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["budget", project.id])
+    assert result.exit_code == 0, result.output
+    assert "1,500" in result.output or "1500" in result.output, result.output
+
+
+def test_budget_matches_retro_for_same_workspace(project_dir: Path) -> None:
+    """Both commands derive cost from the audit log; they must agree.
+    G-A3 root cause: budget skipped the audit-path resolver, retro didn't."""
+    from ortim.workspace import ProjectStore, resolve_workspace
+
+    loc = resolve_workspace(arg=None)
+    project = ProjectStore(loc).load()
+    audit_path = loc.metadata_dir / "audit.jsonl"
+    _seed_audit_entry(audit_path, project.id)
+    _seed_audit_entry(audit_path, project.id)  # 2 entries → 3,000 total tokens
+
+    runner = CliRunner()
+    budget_result = runner.invoke(app, ["budget"])
+    retro_result = runner.invoke(app, ["retro"])
+
+    assert budget_result.exit_code == 0
+    assert retro_result.exit_code == 0
+    # Both commands derive cost from the same audit log; the shared signal
+    # is the per-entry cost rounding. 2 entries × ($1.4/M × 1000 in + $2.8/M
+    # × 500 out) = $0.0028 — but provider/pricing may drift, so just assert
+    # both report the same non-zero cost string.
+    import re
+
+    def _extract_cost(output: str) -> str | None:
+        match = re.search(r"\$(\d+\.\d+)", output)
+        return match.group(0) if match else None
+
+    budget_cost = _extract_cost(budget_result.output)
+    retro_cost = _extract_cost(retro_result.output)
+    assert budget_cost is not None and budget_cost != "$0.0000", (
+        f"budget reported zero or missing cost: {budget_result.output}"
+    )
+    assert retro_cost is not None and retro_cost != "$0.0000", (
+        f"retro reported zero or missing cost: {retro_result.output}"
+    )
+    assert budget_cost == retro_cost, (
+        f"budget cost {budget_cost} != retro cost {retro_cost}\n"
+        f"budget:\n{budget_result.output}\nretro:\n{retro_result.output}"
+    )
+
+
+# ---------------- G-A2: legacy pool audit fallback ----------------
+
+
+def test_budget_pool_workspace_falls_back_to_global_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for G-A2: pool workspaces created before the project-mode
+    pivot wrote audit events to the global default log, not per-workspace.
+    `budget <pool-id>` must still surface that cost by falling back to the
+    global default when the per-workspace audit is empty or missing."""
+    import json as _json
+
+    pool_root = tmp_path / "workspaces"
+    pool_root.mkdir()
+    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
+    monkeypatch.chdir(tmp_path)
+
+    from ortim.orchestrator import Project
+
+    project = Project(name="legacy-pool", initial_brief_tr="x")
+    project.save(pool_root)
+    # Pool workspace has NO per-workspace audit.jsonl (this is the bug
+    # condition — pre-pivot pool runs wrote nowhere local).
+    assert not (pool_root / project.id / "audit.jsonl").exists()
+
+    # Seed the global default audit with a real event for this project.
+    global_audit = tmp_path / "ortim" / "audit" / "decisions.jsonl"
+    global_audit.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "prev_hash": "0" * 64,
+        "timestamp": "2026-05-08T10:00:00+00:00",
+        "event": "worker_output_ok",
+        "category": "worker",
+        "project_id": project.id,
+        "task_id": "T-001",
+        "tokens": {"in": 7000, "out": 600},
+        "provider": "deepseek",
+        "model": "deepseek-chat",
+    }
+    global_audit.write_text(_json.dumps(entry) + "\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["budget", project.id])
+    assert result.exit_code == 0, result.output
+    # 7,000 input + 600 output = 7,600 total — must surface, not zero.
+    assert "7,600" in result.output or "7600" in result.output, result.output
+
+
+def test_budget_whole_log_query_does_not_silently_mix_global(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Locks the scope rule: `BudgetTracker(path).report()` with no
+    project_id is a whole-log query of the configured path. It must NOT
+    silently fall back to the global default — that would let two
+    unrelated audit logs be summed without the caller opting in."""
+    from ortim.budget import BudgetTracker
+
+    # A primary log with one entry.
+    primary = tmp_path / "primary.jsonl"
+    primary.write_text(
+        '{"project_id": "X", "tokens": {"in": 100, "out": 50}}\n',
+        encoding="utf-8",
+    )
+
+    # Make the global default *exist* with different totals; cwd points at
+    # tmp_path so `./ortim/audit/decisions.jsonl` resolves under it.
+    monkeypatch.chdir(tmp_path)
+    global_audit = tmp_path / "ortim" / "audit" / "decisions.jsonl"
+    global_audit.parent.mkdir(parents=True, exist_ok=True)
+    global_audit.write_text(
+        '{"project_id": "X", "tokens": {"in": 9999, "out": 9999}}\n',
+        encoding="utf-8",
+    )
+
+    # Whole-log report must report ONLY primary's 100/50.
+    report = BudgetTracker(audit_path=primary).report()
+    assert report.input_tokens == 100
+    assert report.output_tokens == 50
+    assert report.entry_count == 1
+
+
 # ---------------- backward compat: arg still works ----------------
 
 

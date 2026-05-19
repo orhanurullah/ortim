@@ -46,28 +46,77 @@ pip install -e .[dev]
 
 Editable install (`-e`) keeps the `ortim` command in sync with your local edits.
 
-### 1.2 API keys — `.env` file
+### 1.2 LLM provider — `ortim config init` (0.9.4+)
 
-Create a `.env` in the directory where you'll run `ortim`. At minimum:
+Easiest path: run the interactive wizard. It writes `~/.ortim/config.toml` once and applies everywhere — no per-project `.env` files needed.
+
+```bash
+ortim config init
+```
+
+It asks three things:
+1. **Provider** — `anthropic` (Claude), `deepseek` (Anthropic-compatible, cheap), or `ollama` (local, no API key).
+2. **Default model** — accept the provider's default or pick your own.
+3. **API key** — hidden input; skipped for `ollama` since it runs locally.
+
+Verify what's active:
+
+```bash
+ortim config show
+# │ default provider  │ deepseek        │ config  │
+# │ default model     │ deepseek-chat   │ config  │
+# │ deepseek api key  │ set (length 35) │ config  │
+```
+
+The `Source` column tells you where each value came from:
+- `config` — `~/.ortim/config.toml` (set via the wizard)
+- `env` — shell variable or `.env` in the project directory
+- `default` — neither; the hardcoded fallback will apply
+
+**Per-role overrides** — cheap model for high-volume work, premium for the calls that matter:
+
+```bash
+ortim config set-role architect --provider anthropic
+ortim config set-role security_reviewer --provider anthropic
+ortim config set-role babel --provider deepseek
+```
+
+**Per-invocation override** — try a different provider for one command without touching config:
+
+```bash
+ortim run --provider ollama --model qwen2.5-coder:7b
+ortim demo --provider ollama        # try the demo with zero API keys
+```
+
+**Resolution order** (highest precedence first):
+1. `--provider` / `--model` CLI flag
+2. Shell or `.env` env var (`LLM_PROVIDER`, `DEEPSEEK_API_KEY`, role-specific `BABEL_PROVIDER`, ...)
+3. `~/.ortim/config.toml`
+4. Hardcoded default (`anthropic` + `claude-opus-4-7`)
+
+So setting `LLM_PROVIDER=ollama` in your shell for one session always wins over whatever the config file says, and `--provider deepseek` on a single command always wins over both.
+
+**Alternative — `.env` file.** Still fully supported. Create a `.env` in the directory where you'll run `ortim`:
 
 ```ini
-# Recommended baseline — cheap, fast, full pipeline works
+# Cheap baseline — entire pipeline works on DeepSeek
 DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+LLM_PROVIDER=deepseek
 
-# Optional — premium models for the Architect and Security Reviewer roles
+# Optional — route the high-judgement roles to Claude
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ARCHITECT_PROVIDER=anthropic
+SECURITY_REVIEWER_PROVIDER=anthropic
 
 # Optional — per-project USD cap (G7 budget gate)
 ORTIM_BUDGET_CAP_USD=2.00
 ```
 
-**Why both keys are optional, but you need at least DeepSeek in practice:**
+**Why both API key entries are optional:** Ortim is multi-provider. With no keys and no Ollama, LLM-driven commands (`init`, `run`, `demo`, `run-all`, `extend`) won't work; deterministic ones (`status`, `tasks`, `drift-check`, `score-tier`, `retro`) still run. Pick one of: DeepSeek (cheap), Anthropic (premium), Ollama (local, free).
 
-Ortim is multi-provider — each agent role can target its own LLM provider. With no keys at all, the LLM-driven commands (`new`, `init`, `run`, `demo`, `run-all`, `extend`) won't work; deterministic ones (`status`, `tasks`, `drift-check`, `score-tier`, `retro`) still run.
+**Getting a DeepSeek key:** [platform.deepseek.com](https://platform.deepseek.com) → Sign up → API Keys → Create. Free credit covers ~500 planning chains.
 
-DeepSeek alone is enough for the entire pipeline. Adding Anthropic lets you route the high-judgement roles to Claude (`.env`: `ARCHITECT_PROVIDER=anthropic`). Cost goes up roughly 10×; quality improves on the most ambiguous decisions.
-
-**Getting a DeepSeek key:** [platform.deepseek.com](https://platform.deepseek.com) → Sign up → API Keys → Create. The free credit covers ~500 planning chains, which is plenty for exploration.
+**Running Ollama locally:** install from [ollama.com](https://ollama.com), then `ollama pull qwen2.5-coder:7b`. `ortim config set-provider ollama` and you're done — no API key, no monthly bill.
 
 ### 1.3 Workspace pattern — Project Mode (0.9+)
 
@@ -118,26 +167,29 @@ Sample output (abridged):
 ```
 Ortim doctor — Environment health check
 
-┌────────────────────┬────────┬────────────────────────────────┐
-│ Check              │ Status │ Detail                         │
-├────────────────────┼────────┼────────────────────────────────┤
-│ Python ≥ 3.11      │   OK   │ 3.14.0                         │
-│ DEEPSEEK_API_KEY   │   OK   │ set (length 35)                │
-│ ANTHROPIC_API_KEY  │  MISS  │ not set                        │
-│ Node.js            │   OK   │ v24.11.1 (T1-T4 web)           │
-│ npm                │   OK   │ 11.6.4                         │
-│ Flutter            │   OK   │ Flutter 3.38.3                 │
-│ Go                 │   --   │ not installed                  │
-│ Skills directory   │   OK   │ 7 skill file(s)                │
-└────────────────────┴────────┴────────────────────────────────┘
+┌─────────────────────┬────────┬───────────────────────────────────────────────┐
+│ Check               │ Status │ Detail                                        │
+├─────────────────────┼────────┼───────────────────────────────────────────────┤
+│ Python ≥ 3.11       │   OK   │ 3.14.0                                        │
+│ Active LLM provider │   OK   │ deepseek (source: config; DEEPSEEK_API_KEY set) │
+│ DEEPSEEK_API_KEY    │   OK   │ set (length 35)                               │
+│ ANTHROPIC_API_KEY   │  MISS  │ not set                                       │
+│ Node.js             │   OK   │ v24.11.1 (T1-T4 web)                          │
+│ npm                 │   OK   │ 11.6.4                                        │
+│ Flutter             │   OK   │ Flutter 3.38.3                                │
+│ Go                  │   --   │ not installed                                 │
+│ Skills directory    │   OK   │ 7 skill file(s)                               │
+└─────────────────────┴────────┴───────────────────────────────────────────────┘
 
 required: 5/5  recommended: 4/5  optional: 5/6
 ```
 
+The **Active LLM provider** row is the one that matters when an LLM call fails — it tells you which provider would be selected right now and whether the matching credential is set. The per-key rows below it are informational (the missing one may be deliberate if you picked a different provider).
+
 Three check classes:
 
 - **required** (FAIL = system can't run): Python version, workspace write permission, L1 principles file, audit log dir, agent prompt files.
-- **recommended** (MISS = practically blocking): at least one LLM API key, Git binary.
+- **recommended** (MISS = practically blocking): at least one usable LLM provider, Git binary.
 - **optional** (MISS = only matters for projects in that stack): Node, Flutter, Cargo, Go, JVM.
 
 A `MISS` / `FAIL` produces a `Fix hints` section explaining what to do.
@@ -235,7 +287,7 @@ Initialized 7f3a2b9c1d4e (task-tracker, greenfield)
 Path: /home/you/dev/task-tracker
 State: intake
 
-Next: ortim run (Babel + Analyst; ANTHROPIC_API_KEY or DEEPSEEK_API_KEY required)
+Next: ortim run (Babel + Analyst; configure a provider first via `ortim config init`)
 ```
 
 A `.ortim/` directory now exists in `cwd`. Every subsequent command — `run`, `status`, `scope`, `tasks`, `run-all`, ... — picks up this workspace automatically when run from this directory or any of its subdirectories.
@@ -408,9 +460,17 @@ Ortim's deterministic state machine + audit trail answer "what did the AI do?" �
 
 ## 6. Common problems + fixes
 
-### 6.1 "DEEPSEEK_API_KEY not set"
+### 6.1 "DEEPSEEK_API_KEY is not set (resolved provider: 'deepseek')"
 
-Check `.env` exists in the right directory. Open a new terminal after editing (env vars may be cached in the old one).
+Three fix paths — pick whichever fits:
+
+1. **Run the wizard** (recommended, works from any directory): `ortim config init`.
+2. **Set the env var** in your shell (`export DEEPSEEK_API_KEY=...`) or in a `.env` file in the directory where you'll run `ortim`. New terminal after editing if env vars look cached.
+3. **Use a different provider** for this run: `ortim run --provider ollama` (local, no key) or `--provider anthropic`.
+
+If you intended a different provider and got the wrong one, `ortim config show` prints the resolved provider and where each value came from. `ortim doctor` includes an "Active LLM provider" row for quick triage.
+
+**Before 0.9.4** there was a bug where `.env` in your project directory was silently ignored on PyPI installs (the lookup walked from the install location, not your cwd). Upgrade to ≥ 0.9.4 — `pip install --upgrade ortim` — if you hit "ANTHROPIC_API_KEY not set" despite a valid `.env` in cwd.
 
 ### 6.2 Architect picked the wrong tier
 

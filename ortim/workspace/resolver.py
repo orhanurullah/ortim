@@ -236,7 +236,18 @@ def resolve_workspace(
 
 
 def _resolve_current_pointer() -> WorkspaceLocation | None:
-    """Read `~/.ortim/registry.json::current` and resolve it."""
+    """Read `~/.ortim/registry.json::current` and resolve it.
+
+    Returns None when the pointer is unset, when the registry entry was
+    cleaned up, or — G-A1 — when the entry still exists but its path no
+    longer does on disk (temp-dir reaper, manual delete, drive change).
+    The resolver is read-only by contract: it does NOT auto-prune the
+    stale entry. Run `ortim workspace doctor` to surface the mismatch
+    and decide whether to migrate the workspace or remove the entry.
+    Silently skipping here is the right symptom fix — falling through
+    to the friendly `No project here` error beats opening a workspace
+    at a path the operating system already deleted.
+    """
     reg_path = _registry_path()
     if not reg_path.exists():
         return None
@@ -249,4 +260,9 @@ def _resolve_current_pointer() -> WorkspaceLocation | None:
     current_id = data.get("current")
     if not current_id:
         return None
-    return _resolve_registry(current_id)
+    loc = _resolve_registry(current_id)
+    if loc is None:
+        return None
+    if not loc.state_file.exists():
+        return None
+    return loc

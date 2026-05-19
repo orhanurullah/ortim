@@ -127,6 +127,29 @@ def _category_cost(
     return round(total, 6)
 
 
+_GLOBAL_DEFAULT_AUDIT = Path("./ortim/audit/decisions.jsonl")
+
+
+def _audit_sources(audit_path: Path) -> list[Path]:
+    """Resolve the ordered list of audit logs to scan.
+
+    Always includes `audit_path` (the per-workspace override, or the global
+    default if env was unset). If the resolved path is *different* from the
+    global default, the global default is appended as a fallback — this
+    keeps legacy pool workspaces working: their per-workspace `audit.jsonl`
+    was never written (events landed in the global log), so retro/budget
+    would otherwise return zero. Existing rows are deduped at read time by
+    `(timestamp, event, task_id)`, so a row that lives in both files is
+    only counted once.
+    """
+    primary = audit_path.resolve()
+    global_default = _GLOBAL_DEFAULT_AUDIT.resolve()
+    sources = [audit_path]
+    if primary != global_default and _GLOBAL_DEFAULT_AUDIT.exists():
+        sources.append(_GLOBAL_DEFAULT_AUDIT)
+    return sources
+
+
 def aggregate(
     project_id: str,
     *,
@@ -139,7 +162,10 @@ def aggregate(
         project_id: matched against the `project_id` field on every audit
             event; non-matching rows are skipped.
         audit_path: override for the audit JSONL (default: $AUDIT_LOG_PATH
-            or `./ortim/audit/decisions.jsonl`).
+            or `./ortim/audit/decisions.jsonl`). When this path is set but
+            empty, the global default is also scanned as a fallback so
+            legacy pool workspaces (whose events live in the global log)
+            still produce a report.
         workspace_root: override for the workspaces dir (default:
             $WORKSPACE_ROOT or `./workspaces`); used to find
             `task_status.json` for `final_status` enrichment.
@@ -148,7 +174,8 @@ def aggregate(
         os.getenv("AUDIT_LOG_PATH", "./ortim/audit/decisions.jsonl")
     )
 
-    if not audit_path.exists():
+    sources = _audit_sources(audit_path)
+    if not any(p.exists() for p in sources):
         return RetroReport(
             project_id=project_id,
             total_llm_calls=0,
@@ -172,69 +199,89 @@ def aggregate(
 
     total_llm_calls = 0
 
-    with audit_path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+    # Dedup across multiple sources: same row could legitimately appear in
+    # both the per-workspace audit and the global default (e.g. a hook
+    # double-writes during an in-flight migration). Key is the natural row
+    # identity: timestamp + event name + task_id.
+    seen_rows: set[tuple[object, str, object]] = set()
 
-            if entry.get("project_id") != project_id:
-                continue
+    for source_path in sources:
+        if not source_path.exists():
+            continue
+        with source_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
 
-            event = str(entry.get("event") or "")
-            # Re-derive from event name rather than trusting the persisted
-            # `category` field. The audit log is immutable history; old rows
-            # carry whatever categorization rule was active at write time,
-            # which `_CATEGORY_PREFIXES` may have since refined. Re-deriving
-            # keeps retro output current without rewriting the log.
-            category = _derive_category(event)
-            task_id = entry.get("task_id")
-            ts = _parse_iso(entry.get("timestamp"))
+                if entry.get("project_id") != project_id:
+                    continue
 
-            tokens = entry.get("tokens")
-            if isinstance(tokens, dict):
-                in_t = int(tokens.get("in", 0) or 0)
-                out_t = int(tokens.get("out", 0) or 0)
-                if in_t > 0 or out_t > 0:
-                    provider = str(entry.get("provider") or "anthropic").lower()
-                    per_cat_in[category] += in_t
-                    per_cat_out[category] += out_t
-                    per_cat_count[category] += 1
-                    cur = per_cat_provider[category].get(provider, (0, 0))
-                    per_cat_provider[category][provider] = (
-                        cur[0] + in_t,
-                        cur[1] + out_t,
-                    )
-                    total_llm_calls += 1
+                event = str(entry.get("event") or "")
+                # Dedup only when the row carries a strong identity
+                # (timestamp + event). Real audit rows always have both;
+                # synthetic test rows often have neither and must not
+                # collapse into a single seen-key bucket.
+                ts_raw = entry.get("timestamp")
+                if ts_raw and event:
+                    row_key = (ts_raw, event, entry.get("task_id"))
+                    if row_key in seen_rows:
+                        continue
+                    seen_rows.add(row_key)
 
-            if task_id:
-                if ts is not None:
-                    if task_id not in per_task_t_first:
-                        per_task_t_first[task_id] = ts
-                    per_task_t_last[task_id] = ts
+                # Re-derive from event name rather than trusting the persisted
+                # `category` field. The audit log is immutable history; old rows
+                # carry whatever categorization rule was active at write time,
+                # which `_CATEGORY_PREFIXES` may have since refined. Re-deriving
+                # keeps retro output current without rewriting the log.
+                category = _derive_category(event)
+                task_id = entry.get("task_id")
+                ts = _parse_iso(entry.get("timestamp"))
 
-                if event == "worker_output_ok":
-                    per_task_worker_ok[task_id] += 1
-                elif event == "worker_sandbox_violation":
-                    per_task_sandbox[task_id] += 1
-                elif event == "reviewer_verdict":
-                    if entry.get("approved") is False:
-                        per_task_rejects[task_id] += 1
+                tokens = entry.get("tokens")
+                if isinstance(tokens, dict):
+                    in_t = int(tokens.get("in", 0) or 0)
+                    out_t = int(tokens.get("out", 0) or 0)
+                    if in_t > 0 or out_t > 0:
+                        provider = str(entry.get("provider") or "anthropic").lower()
+                        per_cat_in[category] += in_t
+                        per_cat_out[category] += out_t
+                        per_cat_count[category] += 1
+                        cur = per_cat_provider[category].get(provider, (0, 0))
+                        per_cat_provider[category][provider] = (
+                            cur[0] + in_t,
+                            cur[1] + out_t,
+                        )
+                        total_llm_calls += 1
 
-            if event == "executor_skill_resolved":
-                names = entry.get("worker_skills") or []
-                if isinstance(names, list):
-                    for raw in names:
-                        name = str(raw)
-                        if not name:
-                            continue
-                        skill_count[name] += 1
-                        if task_id:
-                            skill_last_task[name] = str(task_id)
+                if task_id:
+                    if ts is not None:
+                        if task_id not in per_task_t_first:
+                            per_task_t_first[task_id] = ts
+                        per_task_t_last[task_id] = ts
+
+                    if event == "worker_output_ok":
+                        per_task_worker_ok[task_id] += 1
+                    elif event == "worker_sandbox_violation":
+                        per_task_sandbox[task_id] += 1
+                    elif event == "reviewer_verdict":
+                        if entry.get("approved") is False:
+                            per_task_rejects[task_id] += 1
+
+                if event == "executor_skill_resolved":
+                    names = entry.get("worker_skills") or []
+                    if isinstance(names, list):
+                        for raw in names:
+                            name = str(raw)
+                            if not name:
+                                continue
+                            skill_count[name] += 1
+                            if task_id:
+                                skill_last_task[name] = str(task_id)
 
     final_status_by_task: dict[str, str] = {}
     hitl_escalations = 0
