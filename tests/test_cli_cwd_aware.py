@@ -37,7 +37,7 @@ def project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "fake_pool"))
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", tmp_path / "fake_pool")
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", tmp_path / "fake_pool")
     project_root = tmp_path / "my-app"
     project_root.mkdir()
     monkeypatch.chdir(project_root)
@@ -54,7 +54,7 @@ def elsewhere_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A directory that has no `.ortim/` anchor and no registered workspace."""
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "fake_pool"))
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", tmp_path / "fake_pool")
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", tmp_path / "fake_pool")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
@@ -179,7 +179,7 @@ def test_budget_explicit_id_binds_audit_path(
     so the workspace's audit log is bound, even for pool-layout workspaces."""
     pool_root = tmp_path / "workspaces"
     pool_root.mkdir()
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", pool_root)
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
 
     from ortim.orchestrator import Project
@@ -253,7 +253,7 @@ def test_budget_pool_workspace_falls_back_to_global_audit(
 
     pool_root = tmp_path / "workspaces"
     pool_root.mkdir()
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", pool_root)
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
     monkeypatch.chdir(tmp_path)
 
@@ -330,7 +330,7 @@ def test_status_with_explicit_arg_still_works(
     """Pool-style explicit arg path: legacy callers + tests keep working."""
     pool_root = tmp_path / "workspaces"
     pool_root.mkdir()
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", pool_root)
 
     from ortim.orchestrator import Project
 
@@ -365,7 +365,7 @@ def test_ls_shows_pool_workspaces(
 ) -> None:
     pool_root = tmp_path / "workspaces"
     pool_root.mkdir()
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", pool_root)
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
 
     from ortim.orchestrator import Project
@@ -399,7 +399,7 @@ def test_ls_shows_cwd_project_mode_workspace(
 def test_list_projects_emits_deprecation_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", tmp_path / "ws")
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", tmp_path / "ws")
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
@@ -465,7 +465,7 @@ def test_advance_pool_legacy_via_project_flag(
     """`--project <id>` flag preserves legacy pool flow (no cwd needed)."""
     pool_root = tmp_path / "workspaces"
     pool_root.mkdir()
-    monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", pool_root)
+    monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", pool_root)
     monkeypatch.setenv("ORTIM_HOME", str(tmp_path / "ortim_home"))
 
     from ortim.orchestrator import Project

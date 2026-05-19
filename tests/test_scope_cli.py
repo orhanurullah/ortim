@@ -67,7 +67,7 @@ def test_lock_prd_seeds_scope_and_transitions_to_scope_locking(
 ) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit_path = workspace / "audit.jsonl"
@@ -99,7 +99,7 @@ def test_re_lock_prd_does_not_clobber_existing_scope(
     phase 2), running `_lock_prd` again must NOT silently re-seed."""
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit = AuditLogger(path=workspace / "audit.jsonl")
@@ -141,7 +141,7 @@ def test_scope_set_flag_rewrites_phase_and_locks(
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", root)
 
         project, workspace = _project_at_prd_dialog(root)
         audit = AuditLogger(path=workspace / "audit.jsonl")
@@ -180,7 +180,7 @@ def test_scope_command_rejects_wrong_state(
     runner = CliRunner()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", root)
 
         # Project still in PRD_DIALOG — scope command must refuse.
         project, _ = _project_at_prd_dialog(root)

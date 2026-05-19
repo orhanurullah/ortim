@@ -75,7 +75,7 @@ def test_demo_passes_when_provider_needs_no_key(
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
 
         class _Result:
             returncode = 1  # short-circuit the subprocess chain
@@ -110,7 +110,7 @@ def test_demo_creates_project_workspace_before_running_subprocesses(
     relying on env var propagation."""
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -154,7 +154,7 @@ def test_demo_chain_uses_project_flag_for_advance_and_execute(
 
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -192,7 +192,7 @@ def test_demo_restores_dialog_mode_env_var(monkeypatch: pytest.MonkeyPatch) -> N
     command in that shell session."""
     with tempfile.TemporaryDirectory() as tmp:
         ws_root = Path(tmp) / "workspaces"
-        monkeypatch.setattr("ortim.main.WORKSPACE_ROOT", ws_root)
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
         monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-stub")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.setenv("ORTIM_DIALOG_MODE", "on")
