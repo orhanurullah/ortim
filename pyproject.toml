@@ -1,6 +1,6 @@
 [project]
 name = "ortim"
-version = "0.9.4"
+version = "0.9.5"
 description = "Ortim — agentic dev pipeline with deterministic architecture, audit, and gated execution"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,6 +53,20 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ortim*"]
+
+# Bundle markdown assets (agents/, skills/, principles/, glossary/,
+# golden-paths/) so PyPI installs ship the full runtime. Without this,
+# MemoryLoader.load_agent_prompt() raises FileNotFoundError at first
+# LLM call because the wheel only contained Python sources.
+[tool.setuptools.package-data]
+"ortim._assets" = [
+    "agents/*.md",
+    "skills/**/*.md",
+    "principles/*.md",
+    "glossary/*.md",
+    "golden-paths/*.md",
+    "templates/*.md",
+]
 
 [tool.ruff]
 line-length = 100

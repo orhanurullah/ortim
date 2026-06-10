@@ -91,10 +91,131 @@ def pricing_for(provider: str, model: str) -> tuple[float, float]:
     """Return (input_usd_per_m, output_usd_per_m) for a (provider, model) pair.
 
     Defaults to the provider's primary pricing; per-model overrides can be
-    layered on top later (e.g., `deepseek-reasoner` priced differently from
-    `deepseek-chat`). For now both DeepSeek models share base pricing.
+    layered on top first.
     """
-    cfg = PROVIDERS.get(provider.lower())
+    provider_key = provider.lower()
+    model_key = model.lower()
+    if (provider_key, model_key) in MODEL_PRICING_OVERRIDES:
+        return MODEL_PRICING_OVERRIDES[(provider_key, model_key)]
+
+    cfg = PROVIDERS.get(provider_key)
     if cfg is None:
         return (PROVIDERS["anthropic"].input_usd_per_m, PROVIDERS["anthropic"].output_usd_per_m)
     return (cfg.input_usd_per_m, cfg.output_usd_per_m)
+
+
+MODEL_PRICING_OVERRIDES: dict[tuple[str, str], tuple[float, float]] = {}
+
+
+def _load_provider_overrides() -> dict:
+    """Safely load user-defined custom provider overrides from config.toml."""
+    from pathlib import Path
+    try:
+        from ortim.config.store import default_path
+        target = default_path()
+    except ImportError:
+        target = Path.home() / ".ortim" / "config.toml"
+
+    if not target.exists():
+        return {}
+
+    try:
+        import tomllib
+        with open(target, "rb") as f:
+            raw = tomllib.load(f)
+    except Exception:
+        return {}
+
+    providers_section = raw.get("providers")
+    if isinstance(providers_section, dict):
+        return providers_section
+    return {}
+
+
+def _merge_providers() -> None:
+    overrides = _load_provider_overrides()
+    for name, body in overrides.items():
+        if not isinstance(body, dict):
+            continue
+
+        name_lower = name.lower()
+
+        # Deep/per-field merge if the provider already exists
+        if name_lower in PROVIDERS:
+            built_in = PROVIDERS[name_lower]
+
+            api_key_env = body.get("api_key_env", built_in.api_key_env)
+            base_url = body.get("base_url", built_in.base_url)
+            default_model = body.get("default_model", built_in.default_model)
+
+            try:
+                input_usd_per_m = float(body["input_usd_per_m"])
+            except KeyError:
+                input_usd_per_m = built_in.input_usd_per_m
+            except ValueError:
+                input_usd_per_m = 0.0
+
+            try:
+                output_usd_per_m = float(body["output_usd_per_m"])
+            except KeyError:
+                output_usd_per_m = built_in.output_usd_per_m
+            except ValueError:
+                output_usd_per_m = 0.0
+
+            api_kind = body.get("api_kind", built_in.api_kind)
+
+            PROVIDERS[name_lower] = ProviderConfig(
+                name=name_lower,
+                api_key_env=api_key_env,
+                base_url=base_url,
+                default_model=default_model,
+                input_usd_per_m=input_usd_per_m,
+                output_usd_per_m=output_usd_per_m,
+                api_kind=api_kind,
+            )
+        else:
+            # Custom provider
+            api_key_env = body.get("api_key_env")
+            base_url = body.get("base_url")
+            default_model = body.get("default_model", "unknown")
+
+            try:
+                input_usd_per_m = float(body.get("input_usd_per_m", 0.0))
+            except ValueError:
+                input_usd_per_m = 0.0
+
+            try:
+                output_usd_per_m = float(body.get("output_usd_per_m", 0.0))
+            except ValueError:
+                output_usd_per_m = 0.0
+
+            api_kind = body.get("api_kind", "openai")
+
+            PROVIDERS[name_lower] = ProviderConfig(
+                name=name_lower,
+                api_key_env=api_key_env,
+                base_url=base_url,
+                default_model=default_model,
+                input_usd_per_m=input_usd_per_m,
+                output_usd_per_m=output_usd_per_m,
+                api_kind=api_kind,
+            )
+
+        # Parse nested models pricing overrides
+        models_section = body.get("models")
+        if isinstance(models_section, dict):
+            for model_name, pricing_body in models_section.items():
+                if isinstance(pricing_body, dict):
+                    try:
+                        in_price = float(pricing_body.get("input_usd_per_m", 0.0))
+                    except ValueError:
+                        in_price = 0.0
+                    try:
+                        out_price = float(pricing_body.get("output_usd_per_m", 0.0))
+                    except ValueError:
+                        out_price = 0.0
+                    MODEL_PRICING_OVERRIDES[(name_lower, model_name.lower())] = (in_price, out_price)
+
+
+_merge_providers()
+

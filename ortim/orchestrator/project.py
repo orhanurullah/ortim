@@ -57,6 +57,10 @@ class Project(BaseModel):
     # behavior — older state.json files load unchanged.
     is_brownfield: bool = False
     app_class: str = "web"
+    # Set True when the user explicitly fixed app_class at init time
+    # (`ortim init --app-class mobile`). Planning then hard-locks the
+    # value instead of letting Babel-hint or LLM picks override it.
+    app_class_explicit: bool = False
     source_path: str | None = None  # absolute path to user's repo, when brownfield
 
     # 3-PMP M6 — workspace lifecycle classification.

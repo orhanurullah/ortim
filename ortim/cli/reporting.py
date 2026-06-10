@@ -1,4 +1,4 @@
-"""CLI: raporlama komutları — budget, retro, drift-check, score-tier, mutation-test."""
+"""CLI: reporting commands — budget, retro, drift-check, score-tier, mutation-test."""
 
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
@@ -27,23 +27,24 @@ _DEMO_DEFAULT_BRIEF = (
 def budget(
     project_id: str = typer.Argument(
         None,
-        help="Belirli proje (opsiyonel — boşsa cwd'den keşfedilir veya toplam).",
+        help="Specific project (optional — if empty, discovered from cwd, else global total).",
     ),
     all_projects: bool = typer.Option(
         False, "--all",
-        help="Cwd discovery atlanır — global toplam gösterilir.",
+        help="Skip cwd discovery — show the global total.",
     ),
     by_provider: bool = typer.Option(
         False, "--by-provider/--total-only",
-        help="Provider başına token + USD dağılımını göster",
+        help="Show per-provider token + USD breakdown",
     ),
 ) -> None:
-    """Token kullanım ve maliyet raporu (default: cwd projesi varsa onu, yoksa toplam)."""
+    """Token usage and cost report (default: the cwd project if any, else the total)."""
     from ortim.budget import BudgetTracker
 
-    # arg verilirse resolver üzerinden AUDIT_LOG_PATH bind et (pool + project
-    # mode tek yoldan); arg verilmediyse cwd discovery dene ve aynı bind'i
-    # uygula; başarısızsa global default audit'e düş. --all discovery'yi atlatır.
+    # If an arg is given, bind AUDIT_LOG_PATH through the resolver (pool +
+    # project mode via one path); without an arg, try cwd discovery and apply
+    # the same bind; on failure fall back to the global default audit.
+    # --all bypasses discovery.
     effective_id = project_id
     if not all_projects:
         if project_id is not None:
@@ -95,23 +96,23 @@ def budget(
 def drift_check(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
     as_json: bool = typer.Option(
         False, "--json",
-        help="JSON çıktısı (otomasyon için)",
+        help="JSON output (for automation)",
     ),
 ) -> None:
     """Multi-cycle integrity check — RFC ↔ DAG ↔ status ↔ audit alignment.
 
-    M3.1.1 validators DAG generation sırasında zaten çoğunu enforce ediyor;
-    drift-check post-hoc bir sanity gate: artefakt manuel düzenlenmiş veya
-    orchestrator bir gap'i kaçırmışsa burada yakalanır.
+    M3.1.1 validators already enforce most of this during DAG generation;
+    drift-check is a post-hoc sanity gate: if an artifact was edited by hand
+    or the orchestrator missed a gap, it gets caught here.
 
-    Exit kodları:
-      0 — drift yok
-      2 — sadece warning'ler (status ↔ audit mismatch gibi)
-      3 — error'lar (module scope ihlali, ID continuity kırılması, ...)
+    Exit codes:
+      0 — no drift
+      2 — warnings only (e.g. status ↔ audit mismatch)
+      3 — errors (module scope violation, broken ID continuity, ...)
     """
     import json as _json
 
@@ -167,30 +168,30 @@ def drift_check(
 def retro(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
     per_task: bool = typer.Option(
         False, "--per-task",
-        help="Sadece per-task attempt tablosu (rollup gizlenir)",
+        help="Per-task attempt table only (rollup hidden)",
     ),
     category: str = typer.Option(
         "", "--category",
-        help="Tek kategori filtresi (worker, reviewer, architect, ...)",
+        help="Single-category filter (worker, reviewer, architect, ...)",
     ),
     as_json: bool = typer.Option(
         False, "--json",
-        help="JSON çıktısı (otomasyon / dashboard için)",
+        help="JSON output (for automation / dashboards)",
     ),
 ) -> None:
-    """Retrospective rollup — audit log üzerinden çok-eksenli rapor.
+    """Retrospective rollup — multi-axis report over the audit log.
 
-    Eksenler:
+    Axes:
       * Per-category token + USD breakdown
       * Per-task attempt distribution (worker / sandbox / reviewer rejects)
       * Skill triggers (executor_skill_resolved events)
       * Headline: total LLM calls, retry rate, HITL escalations, p50/p95 wall
 
-    `budget` komutuyla aynı kaynaktan okur ama daha geniş eksenlerde rollup.
+    Reads from the same source as `budget`, but rolls up across wider axes.
     """
     import json as _json
 
@@ -304,7 +305,7 @@ def score_tier_cmd(
     realtime: bool = False,
     bursty: bool = False,
 ) -> None:
-    """Verili input'larla tier seçim algoritmasını koştur (deterministic, API key gerekmez)."""
+    """Run the tier-selection algorithm with the given inputs (deterministic, no API key needed)."""
     from ortim.architecture import (
         GoldenPathInputs,
         OpsCapacity,
@@ -353,31 +354,31 @@ def mutation_test(
     live: bool = typer.Option(
         False,
         "--live",
-        help="Çağrıları gerçek bir Reviewer LLM'ine gönder. Olmadan komut "
-        "case listesini ve metadata'yı bastırır (zero cost).",
+        help="Send the calls to a real Reviewer LLM. Without it, the command "
+        "prints the case list and metadata (zero cost).",
     ),
     provider: str = typer.Option(
         "deepseek",
         "--provider",
-        help="--live için Reviewer provider'ı (anthropic / deepseek / "
-        "ollama). Role-spesifik override mevcutsa onu kullanır.",
+        help="Reviewer provider for --live (anthropic / deepseek / "
+        "ollama). Uses the role-specific override if one exists.",
     ),
     bug_class: str = typer.Option(
         "",
         "--bug-class",
-        help="Sadece bu bug class'ın case'lerini çalıştır. Boş ise "
-        "DEFAULT_CASES'in tamamı.",
+        help="Only run cases of this bug class. If empty, all of "
+        "DEFAULT_CASES.",
     ),
 ) -> None:
-    """Faz 2.3 — Reviewer mutation testing.
+    """Phase 2.3 — Reviewer mutation testing.
 
-    Bilinen-bug fixture'larını Reviewer'a 'Worker output'muş gibi gönderir;
-    catch rate (loose + strict) ölçer. Hedef ≥%70 strict; <%50 → Reviewer
-    prompt sertleştirme tetiği.
+    Sends known-bug fixtures to the Reviewer as if they were Worker output
+    and measures the catch rate (loose + strict). Target ≥70% strict;
+    <50% triggers Reviewer prompt hardening.
 
-    Default --dry-run modu sadece case listesini bastırır (LLM çağrısı yok).
-    --live için Reviewer modeli üzerinden gerçek çağrı yapar (DeepSeek
-    örnek tahmini: 6 case × ~1500 token ≈ \\$0.02).
+    The default --dry-run mode only prints the case list (no LLM calls).
+    --live makes real calls through the Reviewer model (DeepSeek
+    ballpark: 6 cases × ~1500 tokens ≈ \\$0.02).
     """
     from ortim.mutation import DEFAULT_CASES, run_mutation_suite
 
@@ -395,7 +396,7 @@ def mutation_test(
     if not live:
         console.print(
             f"[cyan]Mutation suite — {len(cases)} cases "
-            f"(--live olmadan, sadece listeleme):[/cyan]"
+            f"(without --live, listing only):[/cyan]"
         )
         table = Table(show_header=True)
         table.add_column("Bug class")
@@ -412,7 +413,7 @@ def mutation_test(
             )
         console.print(table)
         console.print(
-            "\n[dim]--live ekleyince Reviewer LLM'ine gönderilir. "
+            "\n[dim]Add --live to send these to the Reviewer LLM. "
             f"Provider override: --provider={provider}[/dim]"
         )
         return
@@ -423,7 +424,7 @@ def mutation_test(
     from ortim.llm import client_for
     from ortim.memory import MemoryLoader
 
-    memory = MemoryLoader(_globals.REPO_ROOT)
+    memory = MemoryLoader(_globals.ASSETS_ROOT)
     audit_path = _globals.REPO_ROOT / "ortim" / "audit" / "mutation_decisions.jsonl"
     audit = AuditLogger(path=audit_path)
     llm = client_for("reviewer", provider=provider)
@@ -451,14 +452,14 @@ def mutation_test(
 
     if report.strict_rate < 0.50:
         console.print(
-            "\n[red]Strict catch rate < 50% — Reviewer prompt sertleştirme "
-            "tetiği. Roadmap 2.3 acceptance criteria not met.[/red]"
+            "\n[red]Strict catch rate < 50% — Reviewer prompt hardening "
+            "trigger. Roadmap 2.3 acceptance criteria not met.[/red]"
         )
         raise typer.Exit(1)
     if report.strict_rate < 0.70:
         console.print(
-            "\n[yellow]Strict catch rate < 70% — target henüz tutmuyor. "
-            "Acceptable for v0.9 lansman ama prompt iteration önerilir.[/yellow]"
+            "\n[yellow]Strict catch rate < 70% — target not met yet. "
+            "Acceptable for the v0.9 launch, but prompt iteration is advised.[/yellow]"
         )
 
 

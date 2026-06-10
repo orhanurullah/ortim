@@ -260,7 +260,7 @@ class ArchitectAgent:
         # this RFC and explicitly defer Phase 2+ to a separate sub-section
         # of §7 Module Breakdown. Without this, the agent collapses all
         # features into one breakdown — the bug §4 of the self-audit
-        # identified as "MVP yapısal olarak yok".
+        # identified as "MVP not structurally present".
         scope_block = ""
         if scope is not None and scope.features:
             scope_block = (

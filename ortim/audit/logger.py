@@ -12,7 +12,7 @@ Compliance posture (M1 — Gun 0):
   * Each event carries a `prev_hash` field that chains to the previous event,
     enabling tamper-evidence detection via `ortim.audit.verify.verify_chain`.
   * Every event is tagged with a `category` field (architect, worker, …) for
-    compliance/danışmanlık reporting filters.
+    compliance/consultancy reporting filters.
 
 Thread-safe: a per-instance `threading.Lock` serializes writes so concurrent
 Workers in `run-all --parallel` cannot interleave bytes within a single

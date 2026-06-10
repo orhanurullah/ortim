@@ -6,6 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.5] — 2026-06-10
+
+**PyPI runtime fix + explicit app_class control + English-canonical CLI.**
+Three independent improvements shipped together: the wheel now bundles all
+markdown assets it depends on at runtime, operators can lock app_class at
+`ortim init` time instead of waiting for Babel to (sometimes silently)
+misclassify, and every user-facing CLI string is now English.
+
+### Changed
+- **CLI output is now fully English.** All `--help` text, docstrings,
+  console messages, and prompts across `ortim/cli/*`, `ortim/cloud/*`,
+  and `ortim/babel` were translated from Turkish (English-canonical
+  pivot, completing the 0.9.2 documentation effort). Turkish briefs are
+  still fully supported as *input* — Babel's language handling is
+  unchanged.
+- **Babel round-trip summary follows the brief's language.** The
+  post-extract "What I understood" confirmation used to be hardcoded
+  Turkish; it now answers in whatever language the brief was written in
+  (English brief → English summary).
+
+### Fixed
+- **Wheel now ships markdown assets.** Pre-0.9.5 the wheel only contained
+  Python sources — `agents/*.md`, `skills/**/*.md`, `docs/principles/`,
+  `docs/glossary/`, and `docs/golden-paths/` lived at the repo root and
+  were excluded from `[tool.setuptools.packages.find]`. PyPI installs
+  could call `ortim status` / `ortim doctor` but `ortim run` raised
+  `FileNotFoundError` on the first `MemoryLoader.load_agent_prompt()`
+  call. Doctor reported three MISS rows for the same reason. The bundled
+  assets now live under `ortim/_assets/` and are declared as
+  `[tool.setuptools.package-data]` so they ride along with the wheel.
+  Backward-compat shims in `MemoryLoader` / `load_all_skills` keep
+  `MemoryLoader(<repo_root>)` working for any test or external script
+  that still passes the legacy path.
+- **App class drift on greenfield init.** When the user wrote "mobil
+  uygulama" or "Android için" in the brief but didn't name a framework
+  (Flutter, React Native…), `state.json` was seeded with `app_class="web"`
+  until the next `ortim run` triggered a Babel-hint override. Init now
+  scans the brief for explicit platform tokens — Turkish and English —
+  and seeds the right value from t0.
+
+### Added
+- **`ortim cloud` command group (Observer preview)** — `login / status /
+  orgs / link / sync / policy` against the Ortim Cloud control plane
+  (cloud.ortim.dev). The CLI stays local-first: `sync` pushes only
+  redacted audit metadata + pipeline state (never source code) and is
+  offline-safe; `policy` pulls org governance policy (provider allowlist,
+  budget cap, mandatory gates) which `run`/`run-all` enforce locally.
+  Without a linked org everything degrades to plain local behavior.
+- **`ortim init --app-class web|mobile|desktop`** — hard lock for
+  operators who want to bypass heuristics. When set, downstream
+  Babel-hint and LLM picks cannot flip the value.
+- **`Project.app_class_explicit: bool`** durable signal so the lock
+  survives across commands.
+- **`app_class_from_brief(text)`** — pure deterministic scanner mirroring
+  the existing `app_class_from_hints` but operating on raw user text.
+  Picks up generic platform tokens (`mobil`, `android`, `iOS`, `tablet`,
+  `play store`, `masaüstü`, `desktop`, `windows app`, …) with
+  word-boundary checks so "kiosks" / "studios" don't fire mobile.
+- **Babel prompt extension** — Hard Rule #4 now instructs Babel to
+  capture generic platform tokens verbatim into `user_stack_hints`, so
+  the existing tier-scorer / architect override path also benefits.
+
+### Internal
+- New constant `ortim.ASSETS_ROOT` (and `ortim.cli._globals.ASSETS_ROOT`)
+  separates "bundled markdown assets" from "operator's repo root".
+  Doctor's `run_all_checks()` gained an `assets_root` keyword. All
+  in-tree call sites updated.
+
 ## [0.9.4] — 2026-05-19
 
 **PyPI install bug-fix + user-level config store.** Reported by a PyPI user

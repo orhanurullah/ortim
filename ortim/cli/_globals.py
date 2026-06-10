@@ -25,11 +25,24 @@ from ortim.orchestrator import InvalidTransition, Project, ProjectState
 
 WORKSPACE_ROOT = Path(os.getenv("WORKSPACE_ROOT", "./workspaces"))
 
-# ORTIM_REPO_ROOT: PyPI kurulumunda `agents/`, `docs/`, `skills/` dizinlerinin
-# nerede aranacağını belirler. Dev kurulumda gerek yok — __file__.parent.parent
-# zaten repo kökünü gösterir. PyPI kurulumunda `site-packages/ortim/main.py`
-# olduğundan parent.parent = site-packages → yanlış. Kullanıcı .env'e
-# `ORTIM_REPO_ROOT=<repo_yolu>` yazarak override edebilir.
+# Two separate concepts, previously conflated as REPO_ROOT:
+#
+#   ASSETS_ROOT — where bundled markdown assets live (agents/, skills/,
+#     principles/, glossary/, golden-paths/). Always resolves to a
+#     directory inside the installed wheel (`<ortim>/_assets/`), which
+#     is also the location in the source repo when editable-installed.
+#     This is the path MemoryLoader / load_all_skills / doctor checks read.
+#
+#   REPO_ROOT — repository / project root, used for things written or
+#     read relative to the operator's working tree (audit logs, tier
+#     bootstrap scripts, repo-rooted helpers). For PyPI installs this
+#     resolves to `site-packages/` which is rarely meaningful — callers
+#     should prefer ASSETS_ROOT when they want bundled data, and the
+#     user's cwd / WORKSPACE_ROOT for their own files.
+#
+# ORTIM_REPO_ROOT env var still overrides REPO_ROOT for legacy setups.
+from ortim import ASSETS_ROOT  # noqa: E402  (re-export so CLI imports stay terse)
+
 REPO_ROOT = (
     Path(os.getenv("ORTIM_REPO_ROOT", "")).resolve()
     if os.getenv("ORTIM_REPO_ROOT")

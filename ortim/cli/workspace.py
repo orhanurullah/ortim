@@ -1,4 +1,4 @@
-"""CLI: workspace komutları — init, new, ls, use + workspace/* subcommands."""
+"""CLI: workspace commands — init, new, ls, use + workspace/* subcommands."""
 
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
@@ -25,39 +25,58 @@ workspace_app = typer.Typer(
 )
 
 def init(
-    brief: str = typer.Argument(..., help="Türkçe proje özeti"),
+    brief: str = typer.Argument(..., help="Project brief (any language)"),
     name: str = typer.Option(
         None,
         "--name",
-        help="Proje kısa adı (default: cwd dizin adı).",
+        help="Short project name (default: cwd directory name).",
     ),
     greenfield: bool = typer.Option(
         False,
         "--greenfield",
-        help="Brownfield otomatik tespitini zorla atla (boş dizin gibi davran).",
+        help="Force-skip brownfield auto-detection (treat as an empty directory).",
     ),
     brownfield: bool = typer.Option(
         False,
         "--brownfield",
-        help="Brownfield modu zorla (manifest dosyası yoksa bile codebase taranır).",
+        help="Force brownfield mode (scan the codebase even without a manifest file).",
+    ),
+    app_class: str = typer.Option(
+        None,
+        "--app-class",
+        help=(
+            "Lock the app class up front: web|mobile|desktop. If set, "
+            "Babel/LLM hints cannot change it later. If unset, the brief "
+            "text is scanned for terms like 'mobile app', 'Android', "
+            "'desktop' (Babel may still override later)."
+        ),
     ),
 ) -> None:
-    """Çalışılan dizinde Ortim projesi başlat (.ortim/ oluşturur).
+    """Initialize an Ortim project in the current directory (creates .ortim/).
 
-    Manifest dosyası (package.json, pyproject.toml, Cargo.toml, ...) varsa
-    brownfield mode; yoksa greenfield mode otomatik seçilir. Manual override
-    için --greenfield veya --brownfield kullan.
+    If a manifest file (package.json, pyproject.toml, Cargo.toml, ...) exists,
+    brownfield mode is selected automatically; otherwise greenfield. Use
+    --greenfield or --brownfield to override manually.
 
-    Önce: `cd ~/dev/todo-app && ortim init "task manager"`
-    Sonra: `ortim status`, `ortim run`, `ortim run-all` — hepsi cwd'den keşfeder.
+    First: `cd ~/dev/todo-app && ortim init "task manager"`
+    Then: `ortim status`, `ortim run`, `ortim run-all` — all discover from cwd.
     """
     from ortim.workspace import InitError, init_project
 
     if greenfield and brownfield:
         console.print(
-            "[red]--greenfield ve --brownfield aynı anda kullanılamaz.[/red]"
+            "[red]--greenfield and --brownfield cannot be used together.[/red]"
         )
         raise typer.Exit(1)
+
+    if app_class is not None:
+        app_class = app_class.lower().strip()
+        if app_class not in ("web", "mobile", "desktop"):
+            console.print(
+                "[red]--app-class must be one of: web, mobile, desktop "
+                f"(got '{app_class}').[/red]"
+            )
+            raise typer.Exit(1)
 
     force = True if brownfield else (False if greenfield else None)
     cwd = Path.cwd()
@@ -68,6 +87,7 @@ def init(
             brief=brief,
             name=name,
             force_brownfield=force,
+            app_class_override=app_class,
         )
     except InitError as e:
         console.print(f"[red]{e}[/red]")
@@ -83,6 +103,7 @@ def init(
         name=project.name,
         is_brownfield=is_brownfield,
         app_class=project.app_class,
+        app_class_explicit=project.app_class_explicit,
         path=str(location.path),
     )
 
@@ -105,8 +126,11 @@ def init(
     )
     console.print(f"Path: [cyan]{location.path}[/cyan]")
     console.print(f"State: [cyan]{project.state.value}[/cyan]")
+    lock_suffix = " [dim](locked)[/dim]" if project.app_class_explicit else ""
+    console.print(
+        f"App class: [cyan]{project.app_class}[/cyan]{lock_suffix}"
+    )
     if is_brownfield:
-        console.print(f"App class: [cyan]{project.app_class}[/cyan]")
         console.print(
             f"\nNext: [cyan]ortim run[/cyan] (Architect skips Babel, "
             "drafts PRD from existing code)."
@@ -114,22 +138,22 @@ def init(
     else:
         console.print(
             "\nNext: [cyan]ortim run[/cyan] "
-            "(Babel + Analyst; ANTHROPIC_API_KEY veya DEEPSEEK_API_KEY gerekir)"
+            "(Babel + Analyst; requires ANTHROPIC_API_KEY or DEEPSEEK_API_KEY)"
         )
 def new(
-    brief: str = typer.Argument(..., help="Türkçe proje özeti"),
-    name: str = typer.Option("untitled", help="Proje kısa adı"),
+    brief: str = typer.Argument(..., help="Project brief (any language)"),
+    name: str = typer.Option("untitled", help="Short project name"),
     from_existing: Path = typer.Option(
         None,
         "--from-existing",
-        help="Brownfield: mevcut proje dizini. Babel atlanır, codebase taranır.",
+        help="Brownfield: existing project directory. Babel is skipped; the codebase is scanned.",
     ),
     link_mode: str = typer.Option(
         "symlink",
-        help="--from-existing için: symlink (hızlı, dev-mode gerekli) veya copy",
+        help="For --from-existing: symlink (fast, requires dev mode) or copy",
     ),
 ) -> None:
-    """[DEPRECATED] Pool layout'unda yeni proje aç. `ortim init` kullan."""
+    """[DEPRECATED] Create a new project in the pool layout. Use `ortim init`."""
     print(
         "WARNING: `ortim new` is deprecated; use `ortim init \"<brief>\"` from "
         "inside your project directory. Pool layout will be removed in v1.0.",
@@ -181,10 +205,10 @@ def new(
 def status(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir (project mode).",
+        help="Workspace ID. If omitted, discovered from cwd (project mode).",
     ),
 ) -> None:
-    """Proje detayını göster (arg yoksa cwd'den keşfeder)."""
+    """Show project details (discovered from cwd when no arg is given)."""
     project, _, location = _resolve_project(project_id)
 
     table = Table(title=f"Project {project.id}")
@@ -219,10 +243,10 @@ def status(
 def inspect(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Brownfield projenin codebase scan özetini göster."""
+    """Show the brownfield project's codebase scan summary."""
     project, store, _ = _resolve_project(project_id)
     if not project.is_brownfield:
         console.print(
@@ -266,10 +290,10 @@ def inspect(
 def rescan(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Brownfield projenin codebase summary'sini yeniden tara."""
+    """Re-scan the brownfield project's codebase summary."""
     from ortim.codebase import scan_codebase
     from ortim.workspace import WorkspaceMode
 
@@ -300,14 +324,14 @@ def rescan(
 def baseline(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
-    recapture: bool = typer.Option(False, "--recapture", help="Test suite'i yeniden koş"),
+    recapture: bool = typer.Option(False, "--recapture", help="Re-run the test suite"),
     override: int = typer.Option(
-        -1, "--override", help="Manuel passing count override (parser yetmediğinde)"
+        -1, "--override", help="Manual passing-count override (when the parser falls short)"
     ),
 ) -> None:
-    """Brownfield projenin test baseline'ını göster veya yeniden yakala."""
+    """Show or recapture the brownfield project's test baseline."""
     from ortim.codebase import (
         TestBaseline,
         capture_baseline,
@@ -396,24 +420,24 @@ def ls(
     prune: bool = typer.Option(
         False,
         "--prune",
-        help="Registry'den silinmiş workspace entry'lerini temizle.",
+        help="Remove deleted workspace entries from the registry.",
     ),
     include_pool: bool = typer.Option(
         True,
         "--include-pool/--no-pool",
-        help="Pool layout'undaki kayıt-dışı workspace'leri de listele.",
+        help="Also list unregistered workspaces in the pool layout.",
     ),
     include_archived: bool = typer.Option(
         False,
         "--include-archived/--no-archived",
-        help="Archive'lanmış workspace'leri de göster (default: gizli).",
+        help="Also show archived workspaces (default: hidden).",
     ),
 ) -> None:
-    """Bilinen tüm workspace'leri listele (registry + pool layout).
+    """List all known workspaces (registry + pool layout).
 
-    Source: `~/.ortim/registry.json` (project-mode entries) + opsiyonel
-    `WORKSPACE_ROOT/` taraması (pool legacy). Aktif workspace `*` ile
-    işaretlenir.
+    Source: `~/.ortim/registry.json` (project-mode entries) + optional
+    `WORKSPACE_ROOT/` scan (pool legacy). The active workspace is marked
+    with `*`.
     """
     from ortim.workspace import Registry, scan_pool_workspaces
 
@@ -512,12 +536,12 @@ def ls(
             "`ortim workspace migrate <id>` to lift them into project mode.[/dim]"
         )
 def use(
-    workspace: str = typer.Argument(..., help="Workspace ID veya name"),
+    workspace: str = typer.Argument(..., help="Workspace ID or name"),
 ) -> None:
-    """Active workspace'i (registry `current` pointer) belirle.
+    """Set the active workspace (registry `current` pointer).
 
-    Sonraki `ortim status` / `ortim run` çağrıları cwd'de `.ortim/`
-    bulamazsa bu pointer'ı kullanır. Git'in `HEAD` analoğu.
+    Subsequent `ortim status` / `ortim run` calls fall back to this pointer
+    when no `.ortim/` is found in cwd. Analogous to git's `HEAD`.
     """
     from ortim.workspace import Registry
 
@@ -537,7 +561,7 @@ def use(
     )
     console.print(f"Path: {entry.path}")
 def list_projects() -> None:
-    """[DEPRECATED] `ortim ls` kullan. Pool layout'unu tarar."""
+    """[DEPRECATED] Use `ortim ls`. Scans the pool layout."""
     print(
         "WARNING: `ortim list-projects` is deprecated; use `ortim ls` instead. "
         "Will be removed in v1.0.",
@@ -549,15 +573,15 @@ def list_projects() -> None:
 @workspace_app.command("list")
 def workspace_list(
     prune: bool = typer.Option(
-        False, "--prune", help="Stale registry entry'lerini temizle."
+        False, "--prune", help="Remove stale registry entries."
     ),
     include_pool: bool = typer.Option(
         True, "--include-pool/--no-pool",
-        help="Pool layout'undaki kayıt-dışı workspace'leri de göster.",
+        help="Also show unregistered workspaces in the pool layout.",
     ),
     include_archived: bool = typer.Option(
         False, "--include-archived/--no-archived",
-        help="Archive'lanmış workspace'leri de göster.",
+        help="Also show archived workspaces.",
     ),
 ) -> None:
     """Alias for top-level `ortim ls`."""
@@ -566,7 +590,7 @@ def workspace_list(
 
 @workspace_app.command("use")
 def workspace_use(
-    workspace: str = typer.Argument(..., help="Workspace ID veya name"),
+    workspace: str = typer.Argument(..., help="Workspace ID or name"),
 ) -> None:
     """Alias for top-level `ortim use`."""
     use(workspace=workspace)
@@ -576,10 +600,10 @@ def workspace_use(
 def workspace_show(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Workspace meta bilgisi (status'a alias; registry + state.json)."""
+    """Workspace metadata (alias for status; registry + state.json)."""
     status(project_id=project_id)
 
 
@@ -587,11 +611,11 @@ def workspace_show(
 def workspace_archive(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Workspace'i archived olarak işaretle. Listeden gizlenir, mutating
-    komutlar reddeder, ama dosya yapısı dokunulmaz."""
+    """Mark the workspace as archived. Hidden from listings, mutating
+    commands are rejected, but the file structure is untouched."""
     from ortim.audit import AuditLogger
     from ortim.workspace import archive_workspace
 
@@ -619,10 +643,10 @@ def workspace_archive(
 def workspace_unarchive(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Workspace'in archived flag'ini temizle."""
+    """Clear the workspace's archived flag."""
     from ortim.audit import AuditLogger
     from ortim.workspace import unarchive_workspace
 
@@ -646,28 +670,28 @@ def workspace_cleanup(
     older_than: int = typer.Option(
         ...,
         "--older-than",
-        help="Son aktiviteden bu kadar gün geçenler hedef alınır (zorunlu).",
+        help="Target workspaces with no activity for this many days (required).",
     ),
     archived_only: bool = typer.Option(
         True,
         "--archived-only/--include-active",
-        help="Default: sadece archive'lanmış workspace'ler. --include-active "
-        "ile aktif workspace'leri de silebilirsin (riskli).",
+        help="Default: archived workspaces only. With --include-active you "
+        "can also delete active workspaces (risky).",
     ),
     state_filter: str = typer.Option(
         None, "--state",
-        help="Belirli state'tekiler (örn. 'failed').",
+        help="Only those in a specific state (e.g. 'failed').",
     ),
     yes: bool = typer.Option(
         False, "--yes", "-y",
-        help="Gerçek silme. Bayrak yoksa dry-run: ne silineceği listelenir.",
+        help="Actually delete. Without the flag, dry-run: lists what would be deleted.",
     ),
 ) -> None:
-    """Eski workspace'leri fiziksel olarak sil (default dry-run).
+    """Physically delete old workspaces (dry-run by default).
 
-    Default güvenli: `--yes` olmadan sadece liste basar. Project mode'da
-    sadece `.ortim/` silinir (kullanıcı kodu kalır); pool mode'da tüm
-    workspace dizini gider.
+    Safe by default: without `--yes` it only prints a list. In project mode
+    only `.ortim/` is deleted (user code stays); in pool mode the whole
+    workspace directory goes.
     """
     from ortim.audit import AuditLogger
     from ortim.workspace import delete_workspace, find_cleanup_candidates
@@ -733,28 +757,28 @@ def workspace_cleanup(
 
 @workspace_app.command("migrate")
 def workspace_migrate(
-    pool_id: str = typer.Argument(..., help="Pool layout'undaki workspace ID (uuid)"),
+    pool_id: str = typer.Argument(..., help="Workspace ID in the pool layout (uuid)"),
     to: Path = typer.Option(
         ...,
         "--to",
-        help="Hedef proje dizini. Yoksa oluşturulur; .ortim/ varsa hata.",
+        help="Target project directory. Created if missing; errors if .ortim/ exists.",
     ),
     move: bool = typer.Option(
         False, "--move/--copy",
-        help="--move pool'u taşır (geri dönüşsüz); default --copy kopyalar.",
+        help="--move relocates the pool (irreversible); default --copy copies.",
     ),
 ) -> None:
-    """Pool layout'undaki workspace'i project mode'a taşı.
+    """Migrate a pool-layout workspace into project mode.
 
-    `<WORKSPACE_ROOT>/<pool_id>/` içeriği şöyle ayrılır:
+    The contents of `<WORKSPACE_ROOT>/<pool_id>/` are split as follows:
       * ortim metadata (state.json/PRD.md/RFC.md/task_dag.json/.cache/...)
         → `<to>/.ortim/`
-      * kullanıcı kodu (auth/, cli/, src/, package.json, ...)
+      * user code (auth/, cli/, src/, package.json, ...)
         → `<to>/` (root)
 
-    Default `--copy` pool'u olduğu gibi bırakır; sorun çıkarsa orijinal
-    veri kaybolmaz. `--move` yapısal olarak aynıdır ama pool dizini
-    silinir (sonra `ortim ls --no-pool` ile temizliği teyit et).
+    The default `--copy` leaves the pool untouched; if anything goes wrong
+    no original data is lost. `--move` is structurally identical but deletes
+    the pool directory (verify cleanup afterwards with `ortim ls --no-pool`).
     """
     from ortim.audit import AuditLogger
     from ortim.workspace import MigrationError, migrate_pool_to_project
@@ -792,7 +816,7 @@ def workspace_migrate(
 
 @workspace_app.command("doctor")
 def workspace_doctor() -> None:
-    """Sağlık taraması: registry/fs uyumsuzluk, kayıt-dışı pool, aging archive."""
+    """Health scan: registry/fs mismatches, unregistered pools, aging archives."""
     from ortim.workspace import doctor_scan
 
     findings = doctor_scan(pool_root=_globals.WORKSPACE_ROOT if _globals.WORKSPACE_ROOT.exists() else None)

@@ -151,3 +151,94 @@ def test_init_audit_log_path_is_under_dot_ortim(tmp_path: Path) -> None:
     _, location, _ = init_project(cwd=tmp_path, brief="todo")
     expected = tmp_path / ".ortim" / "audit.jsonl"
     assert location.metadata_dir / "audit.jsonl" == expected
+
+
+# ---------------- init_project — app_class resolution ----------------
+
+
+def test_init_greenfield_default_app_class_is_web(tmp_path: Path) -> None:
+    project, _, _ = init_project(cwd=tmp_path, brief="todo yöneticisi")
+    assert project.app_class == "web"
+    assert project.app_class_explicit is False
+
+
+def test_init_greenfield_brief_mobile_hint_seeds_mobile(tmp_path: Path) -> None:
+    """User says 'mobil uygulama' in the brief — state.json must carry
+    'mobile' immediately so downstream commands don't have to wait for
+    Babel to run before app_class is correct."""
+    project, _, _ = init_project(
+        cwd=tmp_path, brief="Android için mobil uygulama"
+    )
+    assert project.app_class == "mobile"
+    assert project.app_class_explicit is False  # brief scan is a hint, not a lock
+
+
+def test_init_greenfield_brief_desktop_hint_seeds_desktop(tmp_path: Path) -> None:
+    project, _, _ = init_project(
+        cwd=tmp_path, brief="Tauri ile masaüstü uygulaması"
+    )
+    assert project.app_class == "desktop"
+    assert project.app_class_explicit is False
+
+
+def test_init_explicit_app_class_override_locks(tmp_path: Path) -> None:
+    project, _, _ = init_project(
+        cwd=tmp_path, brief="todo brief", app_class_override="mobile"
+    )
+    assert project.app_class == "mobile"
+    assert project.app_class_explicit is True
+
+
+def test_init_explicit_override_wins_over_brief_hint(tmp_path: Path) -> None:
+    """User wrote 'desktop' in brief but passed --app-class mobile.
+    Explicit flag is the user's last word — it wins."""
+    project, _, _ = init_project(
+        cwd=tmp_path,
+        brief="bir masaüstü uygulaması olabilir",
+        app_class_override="mobile",
+    )
+    assert project.app_class == "mobile"
+    assert project.app_class_explicit is True
+
+
+def test_init_invalid_app_class_override_raises(tmp_path: Path) -> None:
+    with pytest.raises(InitError, match=r"must be one of"):
+        init_project(cwd=tmp_path, brief="x", app_class_override="server")
+
+
+def test_init_brownfield_codebase_hint_beats_brief(tmp_path: Path) -> None:
+    """Brownfield: when codebase scan detects mobile (pubspec.yaml), use
+    that even if the brief mentioned nothing platform-specific."""
+    (tmp_path / "pubspec.yaml").write_text(
+        "name: x\ndependencies:\n  flutter:\n    sdk: flutter\n",
+        encoding="utf-8",
+    )
+    project, _, is_brownfield = init_project(cwd=tmp_path, brief="todo")
+    assert is_brownfield is True
+    assert project.app_class == "mobile"
+
+
+def test_init_brownfield_explicit_override_beats_codebase(tmp_path: Path) -> None:
+    """Edge case — user passed --app-class web for a Flutter project
+    (e.g. ripping out the mobile bits). Explicit wins."""
+    (tmp_path / "pubspec.yaml").write_text(
+        "name: x\ndependencies:\n  flutter:\n    sdk: flutter\n",
+        encoding="utf-8",
+    )
+    project, _, _ = init_project(
+        cwd=tmp_path, brief="todo", app_class_override="web"
+    )
+    assert project.app_class == "web"
+    assert project.app_class_explicit is True
+
+
+def test_init_state_json_persists_app_class(tmp_path: Path) -> None:
+    """Confirms state.json carries the resolved app_class — proves the
+    fix to the original issue (greenfield state.json was 'web' until
+    `ortim run` ran)."""
+    init_project(cwd=tmp_path, brief="mobil uygulama yapacağız")
+    state = json.loads(
+        (tmp_path / ".ortim" / "state.json").read_text(encoding="utf-8")
+    )
+    assert state["app_class"] == "mobile"
+    assert state["app_class_explicit"] is False

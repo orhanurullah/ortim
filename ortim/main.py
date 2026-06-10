@@ -51,6 +51,7 @@ if _user_cfg is not None:
 # `ortim.main`. Canonical homes are `ortim.cli._globals` (globals/helpers)
 # and `ortim.cli.{planning,execution,admin,workspace}` (private helpers).
 from ortim.cli._globals import (  # noqa: F401, E402
+    ASSETS_ROOT,
     REPO_ROOT,
     WORKSPACE_ROOT,
     _apply_invocation_overrides,
@@ -109,6 +110,7 @@ app.add_typer(_config_app, name="config")
 
 # Wire commands from each cli/ module onto the top-level app.
 from ortim.cli import admin as _admin_cli  # noqa: E402
+from ortim.cli import cloud as _cloud_cli  # noqa: E402
 from ortim.cli import execution as _execution_cli  # noqa: E402
 from ortim.cli import planning as _planning_cli  # noqa: E402
 from ortim.cli import reporting as _reporting_cli  # noqa: E402
@@ -119,6 +121,7 @@ _planning_cli.register(app)
 _execution_cli.register(app)
 _reporting_cli.register(app)
 _admin_cli.register(app)
+_cloud_cli.register(app)
 
 
 if __name__ == "__main__":

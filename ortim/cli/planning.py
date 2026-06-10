@@ -1,4 +1,4 @@
-"""CLI: planlama komutları — run, advance, gates, extend, scope, dialog."""
+"""CLI: planning commands — run, advance, gates, extend, scope, dialog."""
 
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
@@ -40,16 +40,16 @@ _APPROVAL_ALIASES: dict[str, tuple[ProjectState, str]] = {
     ),
 }
 def advance(
-    target: str = typer.Argument(..., help="Hedef state veya alias (intake, prd_drafting, schema_approved, ...)"),
-    note: str = typer.Option("", help="State değişikliği için not"),
+    target: str = typer.Argument(..., help="Target state or alias (intake, prd_drafting, schema_approved, ...)"),
+    note: str = typer.Option("", help="Note for the state change"),
     project_id: str = typer.Option(
         None,
         "--project",
         "-p",
-        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID (pool legacy). If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Proje state'ini manuel ilerlet (HITL onayları + acil durum)."""
+    """Manually advance the project state (HITL approvals + emergencies)."""
     from ortim.audit import AuditLogger
 
     project, store, _ = _resolve_project(project_id)
@@ -93,7 +93,7 @@ def advance(
 def gates(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
     """Open HITL gates for a project (G1–G7)."""
@@ -150,7 +150,7 @@ def gates(
     else:
         console.print(table)
 def states() -> None:
-    """Tüm state'leri ve transition'ları listele."""
+    """List all states and transitions."""
     from ortim.orchestrator.state_machine import HITL_GATES, TRANSITIONS
 
     table = Table(title="State Transitions")
@@ -166,7 +166,7 @@ def states() -> None:
 def run(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
     step: str = typer.Option(
         "auto", help="babel | analyst | architect | orchestrator | auto"
@@ -183,7 +183,7 @@ def run(
         "this invocation; per-role env vars still win.",
     ),
 ) -> None:
-    """Projeyi bir veya birden fazla state ileri taşı (ajan çağrısıyla)."""
+    """Move the project forward one or more states (via agent calls)."""
     from ortim.agents import AnalystAgent, ArchitectAgent, OrchestratorAgent
     from ortim.audit import AuditLogger
     from ortim.babel import BabelLayer, StructuredIntent
@@ -199,7 +199,7 @@ def run(
     project, store, _ = _resolve_project(project_id)
     _block_if_archived(project, action="run agents")
 
-    memory = MemoryLoader(_globals.REPO_ROOT)
+    memory = MemoryLoader(_globals.ASSETS_ROOT)
     audit = AuditLogger(path=store.audit_log_path())
     workspace = store.metadata_dir
 
@@ -227,9 +227,11 @@ def run(
         intent_path.write_text(intent.model_dump_json(indent=2), encoding="utf-8")
         console.print(f"[green]Intent saved:[/green] {intent_path}")
 
-        console.print("[cyan]Babel:[/cyan] round-trip TR validation...")
-        tr_summary = babel.round_trip(intent, project.id)
-        console.print(f"\n[bold]Anladığım:[/bold]\n{tr_summary}\n")
+        console.print("[cyan]Babel:[/cyan] round-trip validation...")
+        summary = babel.round_trip(
+            intent, project.id, brief=project.initial_brief_tr
+        )
+        console.print(f"\n[bold]What I understood:[/bold]\n{summary}\n")
 
         # M2: route through INTAKE_DIALOG when ORTIM_DIALOG_MODE=on
         # (default). Legacy direct-to-PRD_DRAFTING path is preserved for
@@ -327,7 +329,7 @@ def run(
         )
         project.save(_globals.WORKSPACE_ROOT)
         console.print(
-            f"\n[yellow]Next:[/yellow] her feature'a phase ata, sonra G1'e geç:"
+            f"\n[yellow]Next:[/yellow] assign a phase to each feature, then proceed to G1:"
         )
         console.print(
             f"  ortim scope {project.id}            "
@@ -405,6 +407,42 @@ def run(
             from ortim.architecture import AppClass
             from ortim.babel import app_class_from_hints
 
+            # Hard lock when user passed `--app-class` at init time. No
+            # downstream signal (LLM pick, Babel hints) is allowed to flip
+            # this — the user made an explicit, durable choice.
+            if project.app_class_explicit:
+                if gp_inputs.app_class.value != project.app_class:
+                    audit.log(
+                        "app_class_locked_from_init",
+                        project_id=project.id,
+                        llm_picked=gp_inputs.app_class.value,
+                        locked_value=project.app_class,
+                    )
+                    console.print(
+                        f"[dim]app_class locked at init "
+                        f"([cyan]{project.app_class}[/cyan]); LLM pick "
+                        f"'{gp_inputs.app_class.value}' ignored.[/dim]"
+                    )
+                    gp_inputs.app_class = AppClass(project.app_class)
+            else:
+                # Init-time brief scan already seeded a non-web app_class
+                # (e.g. user wrote "mobil uygulama"). Carry it forward when
+                # the LLM silently defaulted to web.
+                if (
+                    project.app_class != "web"
+                    and gp_inputs.app_class.value == "web"
+                ):
+                    audit.log(
+                        "app_class_carried_from_init_brief",
+                        project_id=project.id,
+                        from_init=project.app_class,
+                    )
+                    console.print(
+                        f"[dim]app_class from init brief scan: "
+                        f"[cyan]{project.app_class}[/cyan][/dim]"
+                    )
+                    gp_inputs.app_class = AppClass(project.app_class)
+
             intent_path = workspace / "intent.json"
             if intent_path.exists():
                 try:
@@ -414,25 +452,33 @@ def run(
                     # Faz 1.2 B-1 — forward hints to tier scorer so it can
                     # disqualify T2 BaaS when user named self-hosted infra.
                     gp_inputs.user_stack_hints = list(_intent.user_stack_hints)
-                    override = app_class_from_hints(_intent.user_stack_hints)
-                    if override and override != gp_inputs.app_class.value:
-                        audit.log(
-                            "app_class_overridden_from_hints",
-                            project_id=project.id,
-                            llm_picked=gp_inputs.app_class.value,
-                            deterministic_override=override,
-                            hints=list(_intent.user_stack_hints),
-                        )
-                        console.print(
-                            f"[yellow]app_class override:[/yellow] LLM said "
-                            f"'{gp_inputs.app_class.value}', user hints "
-                            f"({', '.join(_intent.user_stack_hints)}) → "
-                            f"'{override}'"
-                        )
-                        gp_inputs.app_class = AppClass(override)
+                    if not project.app_class_explicit:
+                        override = app_class_from_hints(_intent.user_stack_hints)
+                        if override and override != gp_inputs.app_class.value:
+                            audit.log(
+                                "app_class_overridden_from_hints",
+                                project_id=project.id,
+                                llm_picked=gp_inputs.app_class.value,
+                                deterministic_override=override,
+                                hints=list(_intent.user_stack_hints),
+                            )
+                            console.print(
+                                f"[yellow]app_class override:[/yellow] LLM said "
+                                f"'{gp_inputs.app_class.value}', user hints "
+                                f"({', '.join(_intent.user_stack_hints)}) → "
+                                f"'{override}'"
+                            )
+                            gp_inputs.app_class = AppClass(override)
                 except Exception:
                     # Best-effort override; never block the chain.
                     pass
+
+            # Mirror the final pick onto the Project so downstream reads
+            # (status, audit, etc.) see what was actually used for tier
+            # selection — not the init-time guess.
+            if project.app_class != gp_inputs.app_class.value:
+                project.app_class = gp_inputs.app_class.value
+                project.save(_globals.WORKSPACE_ROOT)
 
             gp_path.write_text(
                 gp_inputs.model_dump_json(indent=2), encoding="utf-8"
@@ -498,7 +544,7 @@ def run(
         )
         project.save(_globals.WORKSPACE_ROOT)
         console.print(
-            f"\n[yellow]HITL Gate G2:[/yellow] RFC'yi gözden geçir, onaylamak için:"
+            f"\n[yellow]HITL Gate G2:[/yellow] review the RFC; to approve, run:"
         )
         console.print(
             f"  ortim advance {project.id} rfc_approved --note 'reviewed'"
@@ -632,8 +678,8 @@ def run(
                 f"[green]Extension cycle {cycle} delta RFC written.[/green]\n"
                 f"State: [cyan]{project.state.value}[/cyan]\n"
                 f"\n[yellow]HITL Gate G2 (cycle {cycle}):[/yellow] "
-                f"RFC.md'nin yeni `## Extension {cycle}` bölümünü gözden "
-                "geçir, onaylamak için:\n"
+                f"review the new `## Extension {cycle}` section in RFC.md; "
+                "to approve, run:\n"
                 f"  [cyan]ortim advance {project.id} extend_rfc_approved "
                 "--note 'reviewed'[/cyan]"
             )
@@ -675,7 +721,7 @@ def _dialog_setup(project_id: str | None):
 
     project, store, _ = _resolve_project(project_id)
     workspace = store.metadata_dir
-    return project, workspace, AuditLogger(path=store.audit_log_path()), MemoryLoader(_globals.REPO_ROOT)
+    return project, workspace, AuditLogger(path=store.audit_log_path()), MemoryLoader(_globals.ASSETS_ROOT)
 def _require_dialog_state(project) -> None:
     dialog_states = {
         ProjectState.INTAKE_DIALOG,
@@ -692,19 +738,19 @@ def _require_dialog_state(project) -> None:
         raise typer.Exit(1)
 def refine(
     feedback: str = typer.Argument(
-        ..., help="Geri bildirim. Örn: 'add tagging to must-have features'"
+        ..., help="Feedback. E.g. 'add tagging to must-have features'"
     ),
     force: bool = typer.Option(
-        False, "--force", help="Turn cap aşıldıysa bilinçli devam et."
+        False, "--force", help="Deliberately continue past the turn cap."
     ),
     project_id: str = typer.Option(
         None,
         "--project",
         "-p",
-        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID (pool legacy). If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Aktif dialog state'inin agent'ını feedback ile yeniden çağır."""
+    """Re-invoke the active dialog state's agent with feedback."""
     from ortim.babel import StructuredIntent
     from ortim.dialog import (
         append_dialog_turn,
@@ -831,7 +877,7 @@ def refine(
 def show(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
     artifact: str = typer.Option(
         "current",
@@ -840,7 +886,7 @@ def show(
         help="intent | stack | prd | scope | current",
     ),
 ) -> None:
-    """Aktif (ya da seçili) dialog artifact'ini konsola bas."""
+    """Print the active (or selected) dialog artifact to the console."""
     from ortim.dialog import load_intent_md, load_locked_stack, load_prd_md
 
     project, store, _ = _resolve_project(project_id)
@@ -888,12 +934,12 @@ def show(
 def lock(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
-    yes: bool = typer.Option(False, "--yes", "-y", help="Confirm prompts'ı atla."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompts."),
 ) -> None:
-    """Aktif dialog state'i kilitle, bir sonrakine geç. Diff göster, onay al,
-    bir sonraki state'in ilk draft'ını üret (varsa)."""
+    """Lock the active dialog state and move to the next. Show a diff, confirm,
+    and generate the next state's first draft (if any)."""
     import difflib
 
     from rich.panel import Panel
@@ -1427,20 +1473,20 @@ def _list_extensions(workspace: Path) -> list[tuple[int, str]]:
                 break
     return out
 def extend_cmd(
-    brief: str = typer.Argument(..., help="Yeni feature için Türkçe brief"),
+    brief: str = typer.Argument(..., help="Brief for the new feature (any language)"),
     project_id: str = typer.Option(
         None,
         "--project",
         "-p",
-        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID (pool legacy). If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """M3.1 — DONE projeye yeni bir feature delta'sı ekle.
+    """M3.1 — Add a new feature delta to a DONE project.
 
-    Project DONE durumunda olmalı. Babel + ExtenderAgent çalıştırır,
-    PRD.md'ye `## Extension <N>` bölümü ekler, G1 (cycle N) HITL
-    gate'inde durur. ExtenderAgent BLOCKED-STACK marker'ı üretirse
-    bölüm yazılmaz; kullanıcı bilgilendirilir."""
+    The project must be in the DONE state. Runs Babel + ExtenderAgent,
+    appends an `## Extension <N>` section to PRD.md, and stops at the
+    G1 (cycle N) HITL gate. If ExtenderAgent emits a BLOCKED-STACK
+    marker, no section is written and the user is informed."""
     from ortim.audit import AuditLogger
     from ortim.llm import client_for
     from ortim.memory import MemoryLoader
@@ -1455,7 +1501,7 @@ def extend_cmd(
         )
         raise typer.Exit(1)
 
-    memory = MemoryLoader(_globals.REPO_ROOT)
+    memory = MemoryLoader(_globals.ASSETS_ROOT)
     audit = AuditLogger(path=store.audit_log_path())
     workspace = store.metadata_dir
 
@@ -1497,18 +1543,18 @@ def extend_cmd(
         f"[green]Extension cycle {cycle} delta PRD written.[/green]\n"
         f"State: [cyan]{project.state.value}[/cyan]\n"
         f"\n[yellow]HITL Gate G1 (cycle {cycle}):[/yellow] "
-        f"PRD.md'nin yeni `## Extension {cycle}` bölümünü gözden geçir, "
-        "onaylamak için:\n"
+        f"review the new `## Extension {cycle}` section in PRD.md; "
+        "to approve, run:\n"
         f"  [cyan]ortim advance {project.id} extend_prd_approved "
         "--note 'reviewed'[/cyan]"
     )
 def extensions_cmd(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """M3.1 — Projenin extend cycle geçmişini listele (PRD.md'den okur)."""
+    """M3.1 — List the project's extend-cycle history (reads PRD.md)."""
     project, store, _ = _resolve_project(project_id)
     rows = _list_extensions(store.metadata_dir)
     if not rows:
@@ -1583,37 +1629,37 @@ def _lock_prd(project, workspace, audit, memory) -> None:
     console.print(
         f"[green]PRD locked.[/green] State: "
         f"[cyan]{project.state.value}[/cyan]\n"
-        f"\n[yellow]Next:[/yellow] her feature'a phase ata, sonra G1'e geç:\n"
+        f"\n[yellow]Next:[/yellow] assign a phase to each feature, then proceed to G1:\n"
         f"  [cyan]ortim scope {project.id}[/cyan]"
     )
 def scope(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
     show: bool = typer.Option(
-        False, "--show", help="Sadece mevcut scope.json'u tabloda göster, edit etme."
+        False, "--show", help="Only show the current scope.json as a table; no editing."
     ),
     lock_now: bool = typer.Option(
-        False, "--lock", help="İnteraktif edit'i atla, mevcut scope'u kilitleyip G1'e geç."
+        False, "--lock", help="Skip interactive editing; lock the current scope and proceed to G1."
     ),
     reset: bool = typer.Option(
-        False, "--reset", help="scope.json'u intent.json'dan yeniden seed et (kullanıcı edit'leri silinir)."
+        False, "--reset", help="Re-seed scope.json from intent.json (user edits are discarded)."
     ),
     set_phase: list[str] = typer.Option(
         None,
         "--set",
-        help="Non-interaktif phase atama: --set '<feature substring>=<phase>'. Birden çok kez verilebilir.",
+        help="Non-interactive phase assignment: --set '<feature substring>=<phase>'. Repeatable.",
     ),
 ) -> None:
-    """Faz 1.1 — MVP scope locking. Her feature'a phase + priority ata.
+    """Phase 1.1 — MVP scope locking. Assign a phase + priority to each feature.
 
     Workflow:
-      1. `ortim lock` → state MVP_SCOPE_LOCKING'e geçer; scope.json seed olur
-      2. `ortim scope <id>` → tabloyu göster + her feature için phase prompt
-      3. `ortim scope <id> --lock` → scope kilitlenir, G1'e geçer
+      1. `ortim lock` → state moves to MVP_SCOPE_LOCKING; scope.json is seeded
+      2. `ortim scope <id>` → show the table + prompt a phase for each feature
+      3. `ortim scope <id> --lock` → scope locks, proceed to G1
 
-    Headless (CI veya power-user) için:
+    Headless (CI or power users):
       ortim scope <id> --set "auth=1" --set "social login=2" --lock
     """
     from ortim.scope import load_scope, save_scope, scope_path, suggest_initial_scope
@@ -1706,8 +1752,8 @@ def scope(
     # Interactive phase prompt (skipped when --lock or --set is supplied).
     elif not lock_now:
         console.print(
-            "\n[bold]Her feature için phase girin (1=MVP, 2+=sonraki). "
-            "Enter = mevcut değeri tut.[/bold]\n"
+            "\n[bold]Enter a phase for each feature (1=MVP, 2+=later). "
+            "Enter = keep the current value.[/bold]\n"
         )
         for f in manifest.features:
             prompt = (
@@ -1717,15 +1763,15 @@ def scope(
             try:
                 new_phase = int(raw.strip())
             except ValueError:
-                console.print(f"[red]'{raw}' int değil — atlandı.[/red]")
+                console.print(f"[red]'{raw}' is not an integer — skipped.[/red]")
                 continue
             if new_phase < 1:
-                console.print("[red]phase >= 1 olmalı — atlandı.[/red]")
+                console.print("[red]phase must be >= 1 — skipped.[/red]")
                 continue
             f.phase = new_phase
             f.priority = "must" if new_phase == 1 else "later"
         save_scope(workspace, manifest)
-        console.print(f"\n[green]scope.json kaydedildi.[/green]")
+        console.print(f"\n[green]scope.json saved.[/green]")
         # Re-render so user sees the final assignments.
         table2 = Table(title="Updated scope")
         table2.add_column("Phase", style="cyan", width=5)
@@ -1738,7 +1784,7 @@ def scope(
     should_lock = lock_now
     if not should_lock and not show:
         should_lock = typer.confirm(
-            "\nScope'u kilitleyip G1 (PRD review)'a geç?", default=True
+            "\nLock the scope and proceed to G1 (PRD review)?", default=True
         )
 
     if should_lock:
@@ -1760,9 +1806,9 @@ def scope(
             max_phase=manifest.max_phase(),
         )
         console.print(
-            f"\n[green]Scope kilitlendi.[/green] State: "
+            f"\n[green]Scope locked.[/green] State: "
             f"[cyan]{project.state.value}[/cyan]\n"
-            f"\n[yellow]HITL Gate G1:[/yellow] PRD'yi gözden geçir, onaylamak için:\n"
+            f"\n[yellow]HITL Gate G1:[/yellow] review the PRD; to approve, run:\n"
             f"  [cyan]ortim advance {project.id} prd_approved --note 'reviewed'[/cyan]"
         )
 

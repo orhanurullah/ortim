@@ -295,3 +295,107 @@ def set_role(
         f"model={cfg.roles.get(model_key, '(unchanged)')}  "
         f"[dim]({target})[/dim]"
     )
+
+
+@config_app.command("setup-local")
+def setup_local(
+    mode: str = typer.Option(
+        None,
+        "--mode",
+        help="Routing mode: 'all' (full offline), 'hybrid' (ollama for worker/babel), or 'worker-only'.",
+    )
+) -> None:
+    """Automated wizard to configure local execution with Ollama.
+
+    Verifies connection to local Ollama server, pulls the qwen2.5-coder:7b model
+    if missing, and configures the target routing mode.
+    """
+    import http.client
+    import subprocess
+
+    # 1. Probe local Ollama server
+    conn = http.client.HTTPConnection("localhost", 11434, timeout=1.0)
+    try:
+        conn.request("GET", "/")
+        res = conn.getresponse()
+        res.read()
+    except Exception:
+        console.print("[red]Error: Could not connect to local Ollama server on http://localhost:11434[/red]")
+        console.print("[red]Please download and install Ollama from https://ollama.com/download and ensure the server is running.[/red]")
+        raise typer.Exit(code=1)
+    finally:
+        conn.close()
+
+    # 2. Check and pull model
+    console.print("[cyan]Verifying qwen2.5-coder:7b model readiness...[/cyan]")
+    # stdin=DEVNULL: Python 3.14 + Windows raises ValueError on
+    # subprocess.run with capture_output when stdin is unset.
+    check_cmd = subprocess.run(
+        ["ollama", "show", "qwen2.5-coder:7b"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+    )
+    if check_cmd.returncode != 0:
+        console.print("[yellow]qwen2.5-coder:7b model not found locally. Pulling from Ollama registry...[/yellow]")
+        pull_cmd = subprocess.run(
+            ["ollama", "pull", "qwen2.5-coder:7b"],
+            stdin=subprocess.DEVNULL,
+        )
+        if pull_cmd.returncode != 0:
+            console.print("[red]Error: Failed to pull qwen2.5-coder:7b model.[/red]")
+            raise typer.Exit(code=1)
+        console.print("[green]Successfully pulled qwen2.5-coder:7b model.[/green]")
+    else:
+        console.print("[green]qwen2.5-coder:7b model is already installed.[/green]")
+
+    # 3. Interactively prompt for mode if omitted
+    if mode is None:
+        console.print("\n[bold]Select role-routing mode:[/bold]")
+        console.print("  1) [cyan]hybrid[/cyan]      - Route 'worker' and 'babel' to Ollama; other roles stay on cloud (Default)")
+        console.print("  2) [cyan]all[/cyan]         - Full offline mode: route all roles to Ollama")
+        console.print("  3) [cyan]worker-only[/cyan] - Route only 'worker' to Ollama; other roles stay on cloud")
+
+        choice = typer.prompt("Choice [1-3 or mode name]", default="1")
+        if choice in ("1", "hybrid"):
+            mode = "hybrid"
+        elif choice in ("2", "all"):
+            mode = "all"
+        elif choice in ("3", "worker-only"):
+            mode = "worker-only"
+        else:
+            mode = choice.strip().lower()
+
+    valid_modes = ["all", "hybrid", "worker-only"]
+    if mode not in valid_modes:
+        console.print(f"[red]Error: Invalid routing mode {mode!r}. Valid: {', '.join(valid_modes)}[/red]")
+        raise typer.Exit(code=1)
+
+    # 4. Save to config.toml
+    cfg = _load_or_empty()
+    if mode == "all":
+        cfg.default_provider = "ollama"
+        cfg.default_model = "qwen2.5-coder:7b"
+        for r in ["worker", "babel", "architect", "reviewer", "orchestrator"]:
+            cfg.roles.pop(f"{r}_provider", None)
+            cfg.roles.pop(f"{r}_model", None)
+    elif mode == "hybrid":
+        cfg.default_provider = "anthropic"
+        cfg.roles["worker_provider"] = "ollama"
+        cfg.roles["worker_model"] = "qwen2.5-coder:7b"
+        cfg.roles["babel_provider"] = "ollama"
+        cfg.roles["babel_model"] = "qwen2.5-coder:7b"
+        for r in ["architect", "reviewer", "orchestrator"]:
+            cfg.roles.pop(f"{r}_provider", None)
+            cfg.roles.pop(f"{r}_model", None)
+    elif mode == "worker-only":
+        cfg.default_provider = "anthropic"
+        cfg.roles["worker_provider"] = "ollama"
+        cfg.roles["worker_model"] = "qwen2.5-coder:7b"
+        for r in ["babel", "architect", "reviewer", "orchestrator"]:
+            cfg.roles.pop(f"{r}_provider", None)
+            cfg.roles.pop(f"{r}_model", None)
+
+    written = save(cfg)
+    console.print(f"\n[green]Successfully configured local execution in mode [bold]{mode}[/bold]![/green]")
+    console.print(f"[dim]Config saved to: {written}[/dim]")
+

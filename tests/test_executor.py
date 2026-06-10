@@ -303,7 +303,7 @@ def test_reviewer_prompt_teaches_test_infrastructure_unverifiable_reason() -> No
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "reviewer.md").read_text(encoding="utf-8")
     # Schema field must be declared.
     assert "unverifiable_reason" in prompt
     # Both reasons must be named.
@@ -330,7 +330,7 @@ def test_reviewer_prompt_teaches_barrel_imports_are_correct() -> None:
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "reviewer.md").read_text(encoding="utf-8")
     p_lower = prompt.lower()
     # The section header must exist.
     assert "barrel import" in p_lower
@@ -357,7 +357,7 @@ def test_reviewer_prompt_teaches_stack_json_citation_discipline() -> None:
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "reviewer.md").read_text(encoding="utf-8")
     p_lower = prompt.lower()
 
     # The hard rule must name stack.json explicitly as authoritative.
@@ -398,7 +398,7 @@ def test_reviewer_prompt_teaches_static_sanity_checks_before_unverifiable() -> N
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "reviewer.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "reviewer.md").read_text(encoding="utf-8")
     p_lower = prompt.lower()
 
     # The new section must exist and be discoverable.

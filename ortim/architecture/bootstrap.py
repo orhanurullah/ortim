@@ -501,7 +501,7 @@ _TEST_CMD_BY_TIER_APP: dict[tuple[str, str], str] = {
 # (tier, app_class) has no matrix entry — observed in `todo-greenfield-4`
 # (T0/web), where every test-shaped acceptance criterion turned
 # `unverifiable` because the runner was unset, even though Worker had
-# emitted a real Go test file. Item 18 genişlemesi.
+# emitted a real Go test file. Item 18 expansion.
 _LANG_TEST_CMD: list[tuple[str, str]] = [
     # Order matters: more-specific tokens first to avoid false positives
     # ("rust" matches "rustic"; "go" must not match "good"). We anchor with

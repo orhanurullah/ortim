@@ -23,10 +23,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ortim.babel import app_class_from_brief
 from ortim.orchestrator.project import Project
 from ortim.orchestrator.state_machine import ProjectState
 from ortim.workspace.resolver import WorkspaceLocation, WorkspaceMode
 from ortim.workspace.store import ProjectStore
+
+_VALID_APP_CLASSES = ("web", "mobile", "desktop")
 
 
 _BROWNFIELD_MANIFEST_FILES = (
@@ -75,6 +78,7 @@ def init_project(
     brief: str,
     name: str | None = None,
     force_brownfield: bool | None = None,
+    app_class_override: str | None = None,
 ) -> tuple[Project, WorkspaceLocation, bool]:
     """Initialize a project-mode workspace at `cwd`.
 
@@ -84,6 +88,12 @@ def init_project(
 
     `force_brownfield` overrides auto-detection (True forces brownfield,
     False forces greenfield, None auto-detects).
+
+    `app_class_override` (web|mobile|desktop) hard-locks app_class. When
+    set, downstream Babel/LLM picks cannot flip it. When None, init scans
+    the brief for explicit platform terms (`mobil uygulama`, `Android`,
+    `desktop`, …) and seeds state.json with that hint — Babel can still
+    refine later.
     """
     cwd = cwd.resolve()
     dot = cwd / ".ortim"
@@ -91,6 +101,12 @@ def init_project(
         raise InitError(
             f".ortim/ already exists at {cwd}. Run `ortim status` to see "
             "current state, or remove it manually if you want to start over."
+        )
+
+    if app_class_override is not None and app_class_override not in _VALID_APP_CLASSES:
+        raise InitError(
+            f"--app-class must be one of {', '.join(_VALID_APP_CLASSES)}; "
+            f"got '{app_class_override}'."
         )
 
     is_brownfield = (
@@ -102,10 +118,21 @@ def init_project(
     location = WorkspaceLocation(path=cwd, mode=WorkspaceMode.PROJECT)
     store = ProjectStore(location)
 
+    # Decide initial app_class up-front so state.json carries the right
+    # value from t0. Brownfield path may refine this from the codebase
+    # scan in `_seed_brownfield_metadata`; the explicit override locks
+    # the result regardless.
+    if app_class_override is not None:
+        initial_app_class = app_class_override
+    else:
+        initial_app_class = app_class_from_brief(brief) or "web"
+
     project = Project(
         name=name or _default_name_from_path(cwd),
         initial_brief_tr=brief,
         is_brownfield=is_brownfield,
+        app_class=initial_app_class,
+        app_class_explicit=app_class_override is not None,
         source_path=str(cwd) if is_brownfield else None,
     )
 
@@ -147,10 +174,22 @@ def _seed_brownfield_metadata(
         (cache_dir / "codebase.json").write_text(
             summary.model_dump_json(indent=2), encoding="utf-8"
         )
-        project.app_class = summary.app_class_hint or "web"
+        # Resolution order for brownfield app_class:
+        #   1. user-locked override (already set on `project` by caller)
+        #   2. codebase scan's app_class_hint (Flutter pubspec → mobile, etc.)
+        #   3. brief-text heuristic (user wrote "mobil uygulama")
+        #   4. existing value (defaults to "web")
+        if not project.app_class_explicit:
+            project.app_class = (
+                summary.app_class_hint
+                or app_class_from_brief(brief)
+                or project.app_class
+                or "web"
+            )
     except (FileNotFoundError, NotADirectoryError):
         # Should not happen — we already validated cwd, but stay defensive.
-        project.app_class = "web"
+        if not project.app_class_explicit:
+            project.app_class = app_class_from_brief(brief) or "web"
         summary = None
 
     if summary is not None and detect_test_cmd(cwd):

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
-"""Skill loader — walks `<repo_root>/skills/**/*.md` and parses each file.
+"""Skill loader — walks `<assets_root>/skills/**/*.md` and parses each file.
 
 Each skill is a markdown file with a small YAML-like frontmatter block at
 the top, delimited by `---` lines. The parser is deliberately small (no
@@ -22,19 +22,31 @@ from ortim.skills.schema import Skill, SkillTriggers
 _FRONTMATTER_DELIM = "---"
 
 
-def load_all_skills(repo_root: Path) -> list[Skill]:
-    """Discover every `*.md` under `<repo_root>/skills/` and load it.
+def load_all_skills(assets_root: Path) -> list[Skill]:
+    """Discover every `*.md` under `<assets_root>/skills/` and load it.
 
     Returns the skills in alphabetical order by `name` for deterministic
     iteration. Files that fail to parse are skipped with a stderr
     warning — never raises.
+
+    The `rel_path` recorded on each Skill is relative to `assets_root`
+    (so `"skills/python/fastapi-routing.md"`), which is what downstream
+    logs / dialog summaries display.
+
+    Backward-compat shim: pre-0.9.5 callers passed `<repo>` here (skills
+    used to live at `<repo>/skills/`). If we detect that shape, silently
+    rewrite to the bundled location.
     """
-    skills_dir = repo_root / "skills"
+    if not (assets_root / "skills").exists() and (
+        assets_root / "ortim" / "_assets" / "skills"
+    ).exists():
+        assets_root = assets_root / "ortim" / "_assets"
+    skills_dir = assets_root / "skills"
     if not skills_dir.exists():
         return []
     out: list[Skill] = []
     for path in sorted(skills_dir.rglob("*.md")):
-        rel = path.relative_to(repo_root).as_posix()
+        rel = path.relative_to(assets_root).as_posix()
         try:
             skill = _parse_skill_file(path, rel_path=rel)
         except Exception as exc:  # narrow tracebacks aren't useful to operators

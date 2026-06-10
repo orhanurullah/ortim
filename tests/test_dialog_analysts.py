@@ -173,7 +173,7 @@ def test_stack_analyst_prompt_teaches_browser_only_intent_detection() -> None:
     time. Required user refine every time.
     """
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "stack_analyst.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "stack_analyst.md").read_text(encoding="utf-8")
     p_lower = prompt.lower()
 
     # Section header naming the failure mode.

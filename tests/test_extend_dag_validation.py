@@ -330,7 +330,7 @@ def test_orchestrator_prompt_teaches_extend_ac_aggregation() -> None:
     Granularity' section with explicit aggregation guidance — group ACs
     by (module_scope x behavioral cluster), target 3-5 tasks for a
     10-AC delta, do not pad one-AC-per-task."""
-    prompt = (REPO_ROOT / "agents" / "orchestrator.md").read_text(
+    prompt = (REPO_ROOT / "ortim" / "_assets" / "agents" / "orchestrator.md").read_text(
         encoding="utf-8"
     )
     assert "## Extend Cycle Task Granularity" in prompt, (

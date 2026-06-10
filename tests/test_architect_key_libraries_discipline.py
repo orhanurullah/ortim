@@ -273,7 +273,7 @@ def test_architect_prompt_teaches_single_user_derivation_rules() -> None:
     LLM oscillated between conservative and inferential readings.
     """
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "architect.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "architect.md").read_text(encoding="utf-8")
     p_lower = prompt.lower()
 
     # New derivation-rules section must exist by header.
@@ -313,7 +313,7 @@ def test_architect_prompt_includes_extract_inputs_few_shot_examples() -> None:
     rules without examples were not enough — v3 still fell to `unknown`
     despite Rule 4 ('small < 1K users') technically resolving it."""
     repo_root = Path(__file__).resolve().parent.parent
-    prompt = (repo_root / "agents" / "architect.md").read_text(encoding="utf-8")
+    prompt = (repo_root / "ortim" / "_assets" / "agents" / "architect.md").read_text(encoding="utf-8")
 
     # Examples header must exist.
     assert "Examples — apply the derivation rules consistently" in prompt

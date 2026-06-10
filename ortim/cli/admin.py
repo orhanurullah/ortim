@@ -1,4 +1,4 @@
-"""CLI: yönetim komutları — doctor, demo."""
+"""CLI: admin commands — doctor, demo."""
 
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
@@ -193,17 +193,17 @@ def demo(
 def doctor(
     as_json: bool = typer.Option(
         False, "--json",
-        help="JSON çıktısı (otomasyon için)",
+        help="JSON output (for automation)",
     ),
 ) -> None:
     """Environment health check — keys, runtimes, prompts, templates.
 
     Read-only. Reports gaps + fix hints; does not modify anything.
 
-    Exit kodları:
+    Exit codes:
       0 — clean (required + recommended ✓)
-      2 — required ✓ ama bir veya daha fazla recommended eksik
-      3 — required eksik (sistem temel komutlar bile çalıştıramaz)
+      2 — required ✓ but one or more recommended items missing
+      3 — required missing (the system cannot even run basic commands)
     """
     import json as _json
 
@@ -212,6 +212,7 @@ def doctor(
     report = run_all_checks(
         workspace_root=_globals.WORKSPACE_ROOT,
         repo_root=_globals.REPO_ROOT,
+        assets_root=_globals.ASSETS_ROOT,
     )
 
     if as_json:

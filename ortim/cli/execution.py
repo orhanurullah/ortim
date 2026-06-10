@@ -1,4 +1,4 @@
-"""CLI: yürütme komutları — tasks, execute, run-all + skill/* subcommands."""
+"""CLI: execution commands — tasks, execute, run-all + skill/* subcommands."""
 
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
@@ -24,13 +24,13 @@ skill_app = typer.Typer(help="M3 skills inspection.", no_args_is_help=True)
 def skill_list(
     project_id: str = typer.Argument(
         None,
-        help="Opsiyonel proje ID. Verilirse o projenin stack'ine uyan skills'ler listelenir.",
+        help="Optional project ID. If given, lists the skills matching that project's stack.",
     ),
 ) -> None:
-    """Yüklenmiş skills'leri (ya da bir projenin stack'ine resolve olanları) tabloda göster."""
+    """Show installed skills (or those resolving to a project's stack) as a table."""
     from ortim.skills import load_all_skills, resolve_for_task
 
-    skills = load_all_skills(_globals.REPO_ROOT)
+    skills = load_all_skills(_globals.ASSETS_ROOT)
     if not skills:
         console.print(
             "[yellow]No skills under <repo_root>/skills/. "
@@ -140,10 +140,10 @@ def skill_list(
 
 
 def skill_show(name: str) -> None:
-    """Bir skill'in tüm gövdesini (frontmatter + body) konsola bas."""
+    """Print a skill's full body (frontmatter + body) to the console."""
     from ortim.skills import load_all_skills
 
-    skills = load_all_skills(_globals.REPO_ROOT)
+    skills = load_all_skills(_globals.ASSETS_ROOT)
     match = next((s for s in skills if s.name == name), None)
     if match is None:
         console.print(f"[red]No skill named '{name}'.[/red]")
@@ -205,7 +205,7 @@ def _render_task_md(task, template: str, project_id: str) -> str:
 def tasks(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
 ) -> None:
     """List task DAG for a project."""
@@ -329,7 +329,7 @@ def _load_for_execute(project_id: str | None):
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
-    memory = MemoryLoader(_globals.REPO_ROOT)
+    memory = MemoryLoader(_globals.ASSETS_ROOT)
     audit = AuditLogger(path=store.audit_log_path())
     reviewer_chain = _build_reviewer_chain(memory, audit)
 
@@ -365,7 +365,7 @@ def _load_for_execute(project_id: str | None):
     # resolver picks the right subset per task in the runner.
     from ortim.skills import load_all_skills
 
-    skills = load_all_skills(_globals.REPO_ROOT)
+    skills = load_all_skills(_globals.ASSETS_ROOT)
 
     return (
         project,
@@ -508,10 +508,38 @@ def _maybe_open_schema_gate(project, dag, audit) -> tuple[bool, list[str]]:
     )
     project.save(_globals.WORKSPACE_ROOT)
     return True, list(evidence.task_ids)
-def _maybe_open_budget_gate(project, audit) -> tuple[bool, float, float]:
-    """G7 — when accumulated spend reaches `ORTIM_BUDGET_CAP_USD`
-    and the project is still EXECUTING, transition to
-    BUDGET_AWAITING_APPROVAL. Returns `(gated, spent_usd, cap_usd)`.
+def _effective_budget_cap(policy_cap: float | None) -> float | None:
+    """Tighter of the local env cap and the org policy cap (min of the positive
+    values). Returns None when neither is set → budget gate is a no-op."""
+    caps: list[float] = []
+    cap_raw = env_get("ORTIM_BUDGET_CAP_USD")
+    if cap_raw:
+        try:
+            v = float(cap_raw)
+            if v > 0:
+                caps.append(v)
+        except ValueError:
+            pass
+    if policy_cap is not None:
+        try:
+            v = float(policy_cap)
+            if v > 0:
+                caps.append(v)
+        except (TypeError, ValueError):
+            pass
+    return min(caps) if caps else None
+
+
+def _maybe_open_budget_gate(
+    project, audit, policy_cap: float | None = None
+) -> tuple[bool, float, float]:
+    """G7 — when accumulated spend reaches the effective budget cap and the
+    project is still EXECUTING, transition to BUDGET_AWAITING_APPROVAL.
+    Returns `(gated, spent_usd, cap_usd)`.
+
+    The cap is the tighter of `ORTIM_BUDGET_CAP_USD` (local) and the org
+    policy's `budgetCapUsd` (cloud) — so an org-set cap stops the run even
+    when no env cap is configured ("budget cap durdurur" kabul kriteri).
 
     G7 is the only HITL gate that Ortim_Architecture.md §8 marks
     override-able — a hard ceiling on cost is operationally wrong, but
@@ -520,17 +548,11 @@ def _maybe_open_budget_gate(project, audit) -> tuple[bool, float, float]:
     the overage or pause.
 
     No-ops when:
-      * `ORTIM_BUDGET_CAP_USD` is unset or non-positive
+      * neither env nor policy cap is set (or non-positive)
       * project state is not EXECUTING (already gated or finalized)
     """
-    cap_raw = env_get("ORTIM_BUDGET_CAP_USD")
-    if not cap_raw:
-        return False, 0.0, 0.0
-    try:
-        cap = float(cap_raw)
-    except ValueError:
-        return False, 0.0, 0.0
-    if cap <= 0:
+    cap = _effective_budget_cap(policy_cap)
+    if cap is None:
         return False, 0.0, 0.0
     if project.state != ProjectState.EXECUTING:
         return False, 0.0, cap
@@ -614,30 +636,146 @@ def _maybe_finalize_done(project, status_file, dag, workspace) -> bool:
     project.transition(ProjectState.DONE, actor="executor", note="all tasks done")
     project.save(_globals.WORKSPACE_ROOT)
     return True
+def _cloud_policy_for(workspace):
+    """Cached org governance policy for this workspace (None → degrade, no
+    enforcement). Import-guarded so the cloud layer stays fully optional."""
+    try:
+        from ortim.cloud import hooks as cloud_hooks
+
+        return cloud_hooks.load_effective_policy(workspace)
+    except Exception:
+        return None
+def _policy_cap(policy) -> float | None:
+    return policy.budget_cap_usd if policy is not None else None
+def _enforce_provider_policy(policy, llms, project, audit) -> None:
+    """Hard-reject a run whose configured providers violate the org allowlist,
+    recording a `policy_violation` audit event (detective trail that surfaces
+    in the cloud). No-op when there is no policy or no allowlist."""
+    if policy is None:
+        return
+    from ortim.cloud import hooks as cloud_hooks
+
+    providers = sorted(
+        {getattr(getattr(llm, "config", None), "name", None) for llm in llms}
+        - {None}
+    )
+    bad = cloud_hooks.disallowed_providers(policy, providers)
+    if not bad:
+        return
+    audit.log(
+        "policy_violation",
+        project_id=project.id,
+        kind="provider_not_allowed",
+        providers=bad,
+        allowed=list(policy.allowed_providers),
+    )
+    console.print(
+        f"[red]Policy violation — provider(s) not allowed:[/red] "
+        f"{', '.join(bad)}\n"
+        f"Allowed by org policy: "
+        f"{', '.join(policy.allowed_providers) or 'any'}.\n"
+        f"Switch with [cyan]--provider <allowed>[/cyan] / `ortim config init`, "
+        f"or ask an org admin to update the policy."
+    )
+    raise typer.Exit(code=2)
+def _enforce_mandatory_gates(policy, project, dag, audit) -> None:
+    """Hard-reject a run that has bypassed a gate the org marked mandatory,
+    recording a `policy_violation` (kind=`mandatory_gate_bypassed`). Backs the
+    "zorunlu gate atlanamaz" invariant: a manual `ortim advance` that jumps a
+    schema-approval stop, or a mandatory budget gate with no cap to fire on,
+    is refused before any LLM call. No-op when there is no policy or the org
+    declares no mandatory gates (degrade)."""
+    if policy is None or not policy.mandatory_gates:
+        return
+    from ortim.cloud import hooks as cloud_hooks
+    from ortim.orchestrator import detect_schema_tasks
+
+    schema_required = detect_schema_tasks(dag).triggered
+    # The gate is honored when it can still fire (project at/before the stop)
+    # or already fired in this lifecycle (history shows the approval state).
+    # Without the history check, a legitimately-approved project that is now
+    # EXECUTING would be flagged on the next `execute`/`run-all` invocation.
+    schema_honored = (
+        project.state
+        in (ProjectState.TASKS_READY, ProjectState.SCHEMA_AWAITING_APPROVAL)
+        or any(
+            e.to_state == ProjectState.SCHEMA_AWAITING_APPROVAL
+            for e in project.history
+        )
+    )
+    budget_cap_in_effect = _effective_budget_cap(_policy_cap(policy)) is not None
+
+    bad = cloud_hooks.mandatory_gate_violations(
+        policy,
+        schema_required=schema_required,
+        schema_honored=schema_honored,
+        budget_cap_in_effect=budget_cap_in_effect,
+    )
+    if not bad:
+        return
+    audit.log(
+        "policy_violation",
+        project_id=project.id,
+        kind="mandatory_gate_bypassed",
+        gates=bad,
+        state=project.state.value,
+    )
+    remedies = {
+        "G3": (
+            "schema/migration review (G3) — the DAG changes the schema but "
+            "the run skipped the approval stop. Re-run from `tasks_ready` so "
+            "the gate opens; do not `ortim advance` straight to `executing`."
+        ),
+        "G7": (
+            "budget cap (G7) — marked mandatory but no cap is set, so the gate "
+            "can never fire. Set ORTIM_BUDGET_CAP_USD or an org policy "
+            "`budgetCapUsd`."
+        ),
+    }
+    console.print("[red]Policy violation — mandatory gate(s) bypassed:[/red]")
+    for g in bad:
+        console.print(f"  • {remedies.get(g, g)}")
+    console.print("Or ask an org admin to remove the gate from the policy.")
+    raise typer.Exit(code=2)
+def _auto_sync_after_run(workspace, project, audit) -> None:
+    """Best-effort post-run push of redacted audit + state to the cloud, then
+    refresh the cached policy. Never blocks or fails the run (offline-safe)."""
+    try:
+        from ortim.cloud import hooks as cloud_hooks
+
+        status = cloud_hooks.auto_sync(
+            workspace, current_state=project.state.value, audit_path=audit.path
+        )
+    except Exception:
+        return
+    if status == "deferred":
+        console.print("[dim]cloud sync deferred (offline) — retries next run.[/dim]")
+    elif status:
+        console.print(f"[dim]cloud sync: {status}.[/dim]")
 def execute(
     task_id: str = typer.Argument(..., help="Task ID (T-...)"),
-    max_attempts: int = typer.Option(3, help="Reject sonrasi max retry"),
+    max_attempts: int = typer.Option(3, help="Max retries after a reject"),
     human_reviewed: bool = typer.Option(
         False,
         "--human-reviewed",
-        help="Faz 1.5 — sensitive_categories tagged task'lari icin insan onayini "
-        "bildirir. Bu olmadan auth/pii/payment kategorilerindeki task'lar "
-        "reviewer'i gectikten sonra AWAITING_HITL'e dusurulur.",
+        help="Phase 1.5 — signals human approval for tasks tagged with "
+        "sensitive_categories. Without it, tasks in the auth/pii/payment "
+        "categories drop to AWAITING_HITL after passing the reviewer.",
     ),
     project_id: str = typer.Option(
         None,
         "--project",
         "-p",
-        help="Workspace ID (pool legacy). Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID (pool legacy). If omitted, discovered from cwd.",
     ),
 ) -> None:
-    """Tek bir task'i Worker -> tests -> Reviewer pipeline'indan gecir.
+    """Run a single task through the Worker -> tests -> Reviewer pipeline.
 
-    v0.5b: gercek kod + git branch (auto-on if `git` available) +
-    ORTIM_TEST_CMD set ise test runner.
+    v0.5b: real code + git branch (auto-on if `git` is available) +
+    test runner when ORTIM_TEST_CMD is set.
 
-    Faz 1.5: sensitive task'lar (auth/pii/payment) icin --human-reviewed
-    flag'i ile insan onayini sinyalle.
+    Phase 1.5: for sensitive tasks (auth/pii/payment), signal human
+    approval with the --human-reviewed flag.
     """
     from ortim.executor import TaskStatus, execute_task
 
@@ -685,6 +823,12 @@ def execute(
             )
             raise typer.Exit(1)
 
+    # Cloud governance: resolve cached org policy + hard-reject disallowed
+    # providers before any LLM call (degrades silently when unlinked/no policy).
+    policy = _cloud_policy_for(workspace)
+    _enforce_provider_policy(policy, [worker_llm, reviewer_llm], project, audit)
+    _enforce_mandatory_gates(policy, project, dag, audit)
+
     if project.state == ProjectState.TASKS_READY:
         gated, gated_ids = _maybe_open_schema_gate(project, dag, audit)
         if gated:
@@ -700,7 +844,9 @@ def execute(
     # operator may invoke `ortim execute` after `budget_approved` to
     # advance the next task; if the previous overage was just barely
     # tolerated, the next call also gets a fresh decision point.
-    budget_gated, spent, cap = _maybe_open_budget_gate(project, audit)
+    budget_gated, spent, cap = _maybe_open_budget_gate(
+        project, audit, policy_cap=_policy_cap(policy)
+    )
     if budget_gated:
         _print_budget_gate_message(spent, cap)
         raise typer.Exit(code=2)
@@ -746,41 +892,44 @@ def execute(
             f"(attempt {record.attempts + 1}/{max_attempts})...[/yellow]"
         )
 
-    if _maybe_finalize_done(project, status_file, dag, workspace):
+    finalized = _maybe_finalize_done(project, status_file, dag, workspace)
+    if finalized:
         console.print("\n[bold green]All tasks DONE — project complete.[/bold green]")
-    elif result.status != TaskStatus.DONE:
+    _auto_sync_after_run(workspace, project, audit)
+    if not finalized and result.status != TaskStatus.DONE:
         raise typer.Exit(1)
 def run_all(
     project_id: str = typer.Argument(
         None,
-        help="Workspace ID. Boş bırakılırsa cwd'den keşfedilir.",
+        help="Workspace ID. If omitted, discovered from cwd.",
     ),
-    max_attempts: int = typer.Option(3, help="Her task icin max retry"),
+    max_attempts: int = typer.Option(3, help="Max retries per task"),
     stop_on_fail: bool = typer.Option(
         True, "--stop-on-fail/--continue-on-fail",
-        help="Bir task FAILED/AWAITING_HITL olunca dur",
+        help="Stop when a task goes FAILED/AWAITING_HITL",
     ),
     parallel: bool = typer.Option(
         False, "--parallel/--sequential",
-        help="Batch icindeki task'lari paralel kostur (worktree ile, git gerektirir)",
+        help="Run tasks within a batch in parallel (via worktrees, requires git)",
     ),
     max_workers: int = typer.Option(
-        4, help="Paralel mode icin maksimum worker thread sayisi",
+        4, help="Max worker threads for parallel mode",
     ),
     phase: int = typer.Option(
         None,
         "--phase",
-        help="Faz 1.1 — sadece phase <= N task'larini kostur. Omit=tum phaselar.",
+        help="Phase 1.1 — only run tasks with phase <= N. Omit = all phases.",
     ),
 ) -> None:
-    """DAG'i topolojik batch'lerde calistir.
+    """Run the DAG in topological batches.
 
-    - sequential (default): tek tek, ana repo'da `task/<id>` checkout
-    - parallel: batch icindeki task'lar ThreadPoolExecutor + git worktree
-      ile paralel; merge'ler seri, status save lock altinda. Gerektirir:
-      git PATH'te ve `ORTIM_GIT_ENABLED` 'false' degil.
-    - --phase N: scope.json'da phase>N olarak isaretli task'lar atlanir
-      (DAG'da kalir ama PENDING durur). Phase ayrimi ortim scope ile yapilir.
+    - sequential (default): one by one, `task/<id>` checkout in the main repo
+    - parallel: tasks within a batch run in parallel via ThreadPoolExecutor +
+      git worktrees; merges are serial, status saves under a lock. Requires:
+      git on PATH and `ORTIM_GIT_ENABLED` not 'false'.
+    - --phase N: tasks marked phase>N in scope.json are skipped
+      (they stay in the DAG but remain PENDING). Phase split is done via
+      ortim scope.
     """
     from ortim.concurrency import LockTimeout, file_lock
     from ortim.executor import GitNotAvailable, git_enabled
@@ -802,6 +951,12 @@ def run_all(
         tier,
         skills,
     ) = _load_for_execute(project_id)
+
+    # Cloud governance: cached org policy + provider allowlist enforcement
+    # (degrades silently when the workspace is unlinked / has no policy).
+    policy = _cloud_policy_for(workspace)
+    _enforce_provider_policy(policy, [worker_llm, reviewer_llm], project, audit)
+    _enforce_mandatory_gates(policy, project, dag, audit)
 
     if parallel:
         try:
@@ -894,6 +1049,7 @@ def run_all(
                 locked_stack=locked_stack,
                 tier=tier,
                 skills=skills,
+                policy_cap=_policy_cap(policy),
             )
     except LockTimeout:
         console.print(
@@ -901,7 +1057,8 @@ def run_all(
         )
         raise typer.Exit(1)
 
-    if _maybe_finalize_done(project, status_file, dag, workspace):
+    finalized = _maybe_finalize_done(project, status_file, dag, workspace)
+    if finalized:
         console.print("\n[bold green]All tasks DONE — project complete.[/bold green]")
         
         readme_path = workspace / "README.md"
@@ -935,7 +1092,8 @@ def run_all(
             except Exception as e:
                 console.print(f"[yellow]Could not generate README.md automatically: {e}[/yellow]")
 
-    elif blocked:
+    _auto_sync_after_run(workspace, project, audit)
+    if not finalized and blocked:
         console.print(
             "\n[yellow]Stopped: at least one task is not DONE. "
             "Inspect task_status.json and re-run.[/yellow]"
@@ -964,6 +1122,7 @@ def _run_all_loop(
     locked_stack=None,
     tier=None,
     skills=None,
+    policy_cap: float | None = None,
 ) -> bool:
     """Run every batch. Returns True if blocked (a task failed and we stopped)."""
     import threading
@@ -1139,14 +1298,16 @@ def _run_all_loop(
         )
         if parallel and len(pending) > 1:
             console.print(
-                f"  [dim]batch süresi {wall_seconds:.1f}s, "
-                f"toplam çalışma {sum_seconds:.1f}s, hızlanma x{speedup:.2f}[/dim]"
+                f"  [dim]batch wall time {wall_seconds:.1f}s, "
+                f"total work {sum_seconds:.1f}s, speedup x{speedup:.2f}[/dim]"
             )
 
         # G7 — check budget cap after every batch. Single check per batch
         # is the right granularity: per-task is noisy, end-of-run is too
         # late (entire DAG could overrun before we notice).
-        budget_gated, spent, cap = _maybe_open_budget_gate(project, audit)
+        budget_gated, spent, cap = _maybe_open_budget_gate(
+            project, audit, policy_cap=policy_cap
+        )
         if budget_gated:
             _print_budget_gate_message(spent, cap)
             blocked = True

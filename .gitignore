@@ -35,6 +35,15 @@ runtime/audit/*.jsonl
 # IDE
 .vscode/
 .idea/
+.antigravitycli/
+
+# Runtime logs
+logs/
+
+# Internal planning docs (contain infra/billing details — never publish)
+docs/plans/ortim-cloud-progress.md
+docs/plans/ortim-portfolio-platform.md
+docs/plans/pro-grade-transition.md
 
 # OS
 .DS_Store

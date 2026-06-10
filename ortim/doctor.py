@@ -171,21 +171,28 @@ def check_audit_log_dir(repo_root: Path) -> DoctorCheck:
     )
 
 
-def check_l1_principles(repo_root: Path) -> DoctorCheck:
-    path = repo_root / "docs" / "principles" / "core.md"
+def check_l1_principles(assets_root: Path) -> DoctorCheck:
+    path = assets_root / "principles" / "core.md"
     if path.exists() and path.stat().st_size > 0:
+        try:
+            display = str(path.relative_to(assets_root.parent))
+        except ValueError:
+            display = str(path)
         return DoctorCheck(
             "L1 principles file",
             STATUS_OK,
-            str(path.relative_to(repo_root)),
+            display,
             CAT_REQUIRED,
         )
     return DoctorCheck(
         "L1 principles file",
         STATUS_MISSING,
-        f"{path.relative_to(repo_root) if repo_root in path.parents else path} not found",
+        f"{path} not found",
         CAT_REQUIRED,
-        fix_hint="restore docs/principles/core.md from version control",
+        fix_hint=(
+            "reinstall ortim — _assets/principles/core.md is bundled with "
+            "the wheel and should never be missing in a healthy install"
+        ),
     )
 
 
@@ -198,15 +205,18 @@ _REQUIRED_AGENT_PROMPTS = (
 )
 
 
-def check_agent_prompts(repo_root: Path) -> DoctorCheck:
-    agents_dir = repo_root / "agents"
+def check_agent_prompts(assets_root: Path) -> DoctorCheck:
+    agents_dir = assets_root / "agents"
     if not agents_dir.exists():
         return DoctorCheck(
             "Agent prompts",
             STATUS_MISSING,
             f"{agents_dir} dir not found",
             CAT_REQUIRED,
-            fix_hint="restore agents/*.md from version control",
+            fix_hint=(
+                "reinstall ortim — _assets/agents/*.md is bundled with "
+                "the wheel and should never be missing in a healthy install"
+            ),
         )
     missing = [n for n in _REQUIRED_AGENT_PROMPTS if not (agents_dir / n).exists()]
     if missing:
@@ -215,7 +225,7 @@ def check_agent_prompts(repo_root: Path) -> DoctorCheck:
             STATUS_MISSING,
             f"missing: {', '.join(missing)}",
             CAT_REQUIRED,
-            fix_hint="restore the listed prompt files from version control",
+            fix_hint="reinstall ortim to restore the bundled prompt files",
         )
     total = len(list(agents_dir.glob("*.md")))
     return DoctorCheck(
@@ -319,6 +329,72 @@ def check_active_provider() -> DoctorCheck:
     )
 
 
+def check_ollama_local() -> DoctorCheck:
+    """Probe local Ollama on localhost:11434 and check default model presence.
+
+    Same 1-second timeout as `ortim config setup-local` so a Windows
+    firewall block does not hang doctor. Recommended (not required) — the
+    runtime works without Ollama unless the operator explicitly routes a
+    role to it.
+    """
+    import http.client
+    import json
+
+    try:
+        from ortim.llm.providers import PROVIDERS
+        default_model = PROVIDERS["ollama"].default_model
+    except Exception:
+        default_model = "qwen2.5-coder:7b"
+
+    conn = http.client.HTTPConnection("localhost", 11434, timeout=1.0)
+    try:
+        conn.request("GET", "/api/tags")
+        res = conn.getresponse()
+        body = res.read()
+        if res.status != 200:
+            return DoctorCheck(
+                "Ollama (local)",
+                STATUS_MISSING,
+                f"server responded {res.status} on /api/tags",
+                CAT_RECOMMENDED,
+                fix_hint="ensure Ollama server is healthy; see https://ollama.com/download",
+            )
+    except Exception as e:
+        return DoctorCheck(
+            "Ollama (local)",
+            STATUS_MISSING,
+            f"no server on localhost:11434 ({type(e).__name__})",
+            CAT_RECOMMENDED,
+            fix_hint=(
+                "install Ollama from https://ollama.com/download and start "
+                "it, or run `ortim config setup-local` for guided setup"
+            ),
+        )
+    finally:
+        conn.close()
+
+    try:
+        payload = json.loads(body.decode("utf-8", errors="replace"))
+        installed = {m.get("name", "") for m in payload.get("models", [])}
+    except Exception:
+        installed = set()
+
+    if default_model in installed:
+        return DoctorCheck(
+            "Ollama (local)",
+            STATUS_OK,
+            f"running; default model {default_model!r} installed",
+            CAT_RECOMMENDED,
+        )
+    return DoctorCheck(
+        "Ollama (local)",
+        STATUS_WARNING,
+        f"running; default model {default_model!r} not pulled",
+        CAT_RECOMMENDED,
+        fix_hint=f"run `ollama pull {default_model}` or `ortim config setup-local`",
+    )
+
+
 def check_git() -> DoctorCheck:
     version = _which_version("git")
     if version:
@@ -333,15 +409,17 @@ def check_git() -> DoctorCheck:
     )
 
 
-def check_skills_dir(repo_root: Path) -> DoctorCheck:
-    skills_dir = repo_root / "skills"
+def check_skills_dir(assets_root: Path) -> DoctorCheck:
+    skills_dir = assets_root / "skills"
     if not skills_dir.exists():
         return DoctorCheck(
             "Skills directory",
             STATUS_MISSING,
             f"{skills_dir} not found",
             CAT_RECOMMENDED,
-            fix_hint="restore skills/ from version control or accept M3 disabled",
+            fix_hint=(
+                "reinstall ortim — _assets/skills/ is bundled with the wheel"
+            ),
         )
     md_count = sum(1 for _ in skills_dir.rglob("*.md"))
     if md_count == 0:
@@ -502,22 +580,32 @@ def run_all_checks(
     *,
     workspace_root: Path,
     repo_root: Path,
+    assets_root: Path | None = None,
 ) -> DoctorReport:
     """Run every check in display order. Each check is independent —
-    one failure does not abort the rest, so the report is always complete."""
+    one failure does not abort the rest, so the report is always complete.
+
+    `assets_root` points at the bundled `_assets/` dir (agents/, skills/,
+    principles/, …). When None it defaults to `<this-file>/../_assets/`
+    so callers that haven't been updated to thread the value still work.
+    `repo_root` is used only for audit-log path resolution.
+    """
+    if assets_root is None:
+        assets_root = Path(__file__).resolve().parent / "_assets"
     checks = [
         # Required
         check_python_version(),
         check_workspace_dir(workspace_root),
         check_audit_log_dir(repo_root),
-        check_l1_principles(repo_root),
-        check_agent_prompts(repo_root),
+        check_l1_principles(assets_root),
+        check_agent_prompts(assets_root),
         # Recommended
         check_active_provider(),
         check_anthropic_key(),
         check_deepseek_key(),
+        check_ollama_local(),
         check_git(),
-        check_skills_dir(repo_root),
+        check_skills_dir(assets_root),
         check_tier_templates(),
         # Optional
         check_node(),

@@ -54,9 +54,16 @@ def _strip_code_fences(text: str) -> str:
 # stack hints. Architect Call 1 LLM defaults to "web" when the PRD has
 # no mobile/desktop signal, even when the brief explicitly mentioned
 # Flutter / Tauri / React Native (proof-point 45ed19809dec: Flutter habit
-# tracker → tier T2 BaaS instead of M1). This pure function is consumed
-# by `ortim.main.run` to override gp_inputs.app_class post-extraction.
-_MOBILE_HINTS = (
+# tracker → tier T2 BaaS instead of M1).
+#
+# Two flavors of hint exist:
+#   * Framework names — only meaningful for a specific app_class
+#     (Flutter ⇒ mobile, Tauri ⇒ desktop).
+#   * Generic platform tokens — user said "mobil uygulama" / "Android için"
+#     without naming a framework. These were previously invisible to the
+#     classifier and resulted in greenfield state.json being seeded with
+#     app_class="web" by default.
+_MOBILE_FRAMEWORK_HINTS = (
     "flutter",
     "react native",
     "react-native",
@@ -65,8 +72,9 @@ _MOBILE_HINTS = (
     "swiftui",
     "jetpack compose",
     "xamarin",
+    "kotlin multiplatform",
 )
-_DESKTOP_HINTS = (
+_DESKTOP_FRAMEWORK_HINTS = (
     "tauri",
     "electron",
     "wails",
@@ -74,7 +82,62 @@ _DESKTOP_HINTS = (
     "gtk",
     "wpf",
     "winforms",
+    "avalonia",
 )
+_MOBILE_GENERIC_HINTS = (
+    "mobile app",
+    "mobil uygulama",
+    "mobile application",
+    "android app",
+    "android uygulaması",
+    "ios app",
+    "iphone app",
+    "ipad app",
+    "play store",
+    "app store",
+    "google play",
+    "mobil platform",
+)
+# Single-token platform terms — matched as whole words to avoid false
+# positives ("ios" inside "kiosks", "tablet" inside "tabletop"). The
+# tuple holds the canonical lowercase form; `_match_whole_word` does
+# the boundary check.
+_MOBILE_GENERIC_TOKENS = (
+    "android",
+    "ios",
+    "iphone",
+    "ipad",
+    "tablet",
+)
+_DESKTOP_GENERIC_HINTS = (
+    "desktop app",
+    "masaüstü uygulama",
+    "masaüstü uygulaması",
+    "windows app",
+    "windows uygulaması",
+    "macos app",
+    "mac app",
+    "linux app",
+    "desktop application",
+    "tray app",
+    "system tray",
+)
+_DESKTOP_GENERIC_TOKENS = (
+    "desktop",
+    "masaüstü",
+)
+
+_MOBILE_HINTS = _MOBILE_FRAMEWORK_HINTS + _MOBILE_GENERIC_HINTS
+_DESKTOP_HINTS = _DESKTOP_FRAMEWORK_HINTS + _DESKTOP_GENERIC_HINTS
+
+
+def _match_whole_word(blob: str, token: str) -> bool:
+    """Word-boundary check that treats only alphanumerics+underscore as
+    word characters (the default `re.\\b` semantics). Used for single
+    tokens like "ios" so they don't fire inside "kiosks"."""
+    import re
+
+    return re.search(rf"(?<!\w){re.escape(token)}(?!\w)", blob) is not None
 
 
 def app_class_from_hints(hints: list[str]) -> str | None:
@@ -94,6 +157,43 @@ def app_class_from_hints(hints: list[str]) -> str | None:
             return "mobile"
     for kw in _DESKTOP_HINTS:
         if kw in blob:
+            return "desktop"
+    for tok in _MOBILE_GENERIC_TOKENS:
+        if _match_whole_word(blob, tok):
+            return "mobile"
+    for tok in _DESKTOP_GENERIC_TOKENS:
+        if _match_whole_word(blob, tok):
+            return "desktop"
+    return None
+
+
+def app_class_from_brief(brief: str) -> str | None:
+    """Scan a free-form (Turkish) brief for app_class signals.
+
+    Mirrors `app_class_from_hints` but operates on raw user text so the
+    classifier fires even when the user says "mobil uygulama" without
+    naming a framework. Consumed by `ortim.workspace.init.init_project`
+    so state.json is seeded with the right value before Babel runs.
+
+    Multi-word phrases are matched as substrings; single tokens use word
+    boundaries (see `_match_whole_word`). Mobile signals win over desktop
+    when both appear (matches `app_class_from_hints` priority — mobile is
+    statistically more common in the ortim corpus).
+    """
+    if not brief:
+        return None
+    blob = brief.lower()
+    for kw in _MOBILE_HINTS:
+        if kw in blob:
+            return "mobile"
+    for kw in _DESKTOP_HINTS:
+        if kw in blob:
+            return "desktop"
+    for tok in _MOBILE_GENERIC_TOKENS:
+        if _match_whole_word(blob, tok):
+            return "mobile"
+    for tok in _DESKTOP_GENERIC_TOKENS:
+        if _match_whole_word(blob, tok):
             return "desktop"
     return None
 
@@ -150,17 +250,26 @@ class BabelLayer:
         )
         return intent
 
-    def round_trip(self, intent: StructuredIntent, project_id: str) -> str:
-        """Translate intent back to Turkish so the user can confirm or correct."""
+    def round_trip(
+        self, intent: StructuredIntent, project_id: str, brief: str | None = None
+    ) -> str:
+        """Summarize the intent back in the user's language so they can confirm."""
+        language_rule = (
+            "Write the summary in the same language as the original brief below."
+            if brief
+            else "Write the summary in English."
+        )
+        brief_block = f"Original brief:\n{brief}\n\n" if brief else ""
         response = self.llm.call(
             system=(
                 "You translate structured English intent JSON into clear, concise "
-                "Turkish prose for user validation. Maximum 150 words. "
+                f"prose for user validation. {language_rule} Maximum 150 words. "
                 "Use bullet points where it helps clarity."
             ),
             user=(
-                "Aşağıdaki intent JSON'unu kullanıcıya doğrulatmak için Türkçe özetle. "
-                "Eksik/belirsiz noktaları açıkça belirt.\n\n"
+                f"{brief_block}"
+                "Summarize the following intent JSON so the user can validate it. "
+                "Call out missing or ambiguous points explicitly.\n\n"
                 f"{intent.model_dump_json(indent=2)}"
             ),
             temperature=0.2,
