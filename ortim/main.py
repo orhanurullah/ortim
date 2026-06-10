@@ -87,7 +87,9 @@ from ortim.cli.planning import (  # noqa: F401, E402
 )
 from ortim.cli.workspace import _list_pool_projects  # noqa: F401, E402
 
-app = typer.Typer(help="Ortim — agentic dev pipeline (v0.9.4)")
+from ortim import __version__ as _version
+
+app = typer.Typer(help=f"Ortim — agentic dev pipeline (v{_version})")
 console = Console()
 
 # Deprecation: the `ai-factory` CLI alias is kept for backwards

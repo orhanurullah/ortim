@@ -1,12 +1,15 @@
 [project]
 name = "ortim"
 version = "0.9.5"
-description = "Ortim — agentic dev pipeline with deterministic architecture, audit, and gated execution"
+description = "Disciplined multi-agent AI software factory: brief -> PRD -> RFC -> task DAG -> reviewed code, with human gates and a hash-chained audit trail"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "FSL-1.1-Apache-2.0" }
 authors = [{ name = "ortim.dev", email = "contact@ortim.dev" }]
-keywords = ["llm", "agents", "code-generation", "ai-pipeline", "orchestration"]
+keywords = [
+    "llm", "agents", "multi-agent", "code-generation", "ai-coding",
+    "ai-pipeline", "orchestration", "audit", "governance", "devtools",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
