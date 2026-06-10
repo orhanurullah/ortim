@@ -45,6 +45,13 @@ docs/plans/ortim-cloud-progress.md
 docs/plans/ortim-portfolio-platform.md
 docs/plans/pro-grade-transition.md
 
+# Internal working notes / design scratchpads (kept local only)
+tespit.md
+M[0-9]*-plan.md
+M[0-9]*-design.md
+M[0-9].[0-9]-design.md
+*_app-state.md
+
 # OS
 .DS_Store
 Thumbs.db
