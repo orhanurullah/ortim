@@ -78,7 +78,7 @@ A verdict's `criteria_verdicts` length must equal the task's `acceptance_criteri
 
 ### 2.6 Hash-chained audit log
 
-Every LLM call, every state transition, every gate decision, every hook output writes a line to `.ortim/audit.jsonl`. Each entry includes a `hash_prev` field referencing the previous entry's hash, forming a chain. `ortim audit-verify` walks the chain and flags any entry whose hash doesn't match its declared prior.
+Every LLM call, every state transition, every gate decision, every hook output writes a line to `.ortim/audit.jsonl`. Each entry includes a `prev_hash` field referencing the previous entry's hash, forming a chain. `ortim audit-verify` walks the chain and flags any entry whose hash doesn't match its declared prior.
 
 If anything in the chain was edited after the fact, verification fails — the chain has tamper-evidence whether or not you treat it as legally binding evidence.
 

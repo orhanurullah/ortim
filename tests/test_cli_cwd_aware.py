@@ -634,3 +634,57 @@ def test_workspace_doctor_reports_clean_state_for_fresh_workspace(
     result = runner.invoke(app, ["workspace", "doctor"])
     # Fresh init shouldn't produce errors; might surface info about pool
     assert result.exit_code in (0, 1)  # depends on pool extras
+
+
+# ---------------- audit-verify ----------------
+
+
+def test_audit_verify_intact_chain(project_dir: Path) -> None:
+    """A chain written through AuditLogger verifies clean (exit 0)."""
+    from ortim.audit import AuditLogger
+    from ortim.workspace import ProjectStore, resolve_workspace
+
+    loc = resolve_workspace(arg=None)
+    store = ProjectStore(loc)
+    pid = store.load().id
+    logger = AuditLogger(path=store.audit_log_path())
+    logger.log("e1", project_id=pid, note="a")
+    logger.log("e2", project_id=pid, note="b")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["audit-verify"])
+    assert result.exit_code == 0, result.output
+    assert "intact" in result.output.lower()
+
+
+def test_audit_verify_detects_tampering(project_dir: Path) -> None:
+    """Editing an event after the fact breaks the hash chain → exit 1."""
+    import json as _json
+
+    from ortim.audit import AuditLogger
+    from ortim.workspace import ProjectStore, resolve_workspace
+
+    loc = resolve_workspace(arg=None)
+    store = ProjectStore(loc)
+    pid = store.load().id
+    audit_path = store.audit_log_path()
+    logger = AuditLogger(path=audit_path)
+    logger.log("e1", project_id=pid, note="original")
+    logger.log("e2", project_id=pid, note="b")
+
+    # Tamper with the first event's content without repairing the chain;
+    # the next event's prev_hash no longer matches the recomputed hash.
+    records = [
+        _json.loads(ln)
+        for ln in audit_path.read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    records[0]["event"] = "forged_event"
+    audit_path.write_text(
+        "\n".join(_json.dumps(r) for r in records) + "\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["audit-verify"])
+    assert result.exit_code == 1, result.output
+    assert "broken" in result.output.lower()

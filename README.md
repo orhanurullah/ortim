@@ -93,6 +93,25 @@ ortim demo
 
 ---
 
+## How it compares
+
+Ortim is not an IDE assistant, and isn't trying to be. Cursor, Claude Code, Aider, and Continue.dev all optimize the same loop: you, in your editor, steering the model edit by edit. Ortim optimizes a different one — a brief going through a defensible pipeline you can still explain six months later.
+
+| | IDE assistants (Cursor / Claude Code / Aider) | **Ortim** |
+|---|---|---|
+| **Unit of work** | A file, a function, a commit, a chat turn | A validated task in a scope-locked DAG |
+| **Who picks the architecture** | The model | A deterministic scorer over PRD-derived signals |
+| **Approval points** | None enforced | G1 (PRD) + G2 (RFC) mandatory, 5 conditional gates |
+| **Test discipline** | Suggested / promptable | Reviewer chain treats `unverifiable` ≠ `pass` |
+| **Audit trail** | Conversation or git log | Hash-chained, tamper-evident JSONL, PII-redacted |
+| **Best at** | Live, in-editor edits with you watching | Greenfield + brownfield pipelines that must be defensible later |
+
+**Reach for Ortim** when the task is "take a real brief through a real pipeline and be able to explain later what happened and why." **Reach for an IDE assistant** when the task is "tweak this function while I watch." They're complementary — many users run Ortim for the skeleton plus critical features, then switch to an IDE plugin for day-to-day edits.
+
+→ Full feature-by-feature table (incl. Continue.dev) plus the proof-point cost/quality numbers: **[docs/why-ortim.md § Where Ortim sits](docs/why-ortim.md#4-where-ortim-sits-next-to-the-alternatives)**.
+
+---
+
 ## Architecture at a glance
 
 ```
@@ -117,6 +136,13 @@ Two invariants worth naming:
 
 - **The LLM never picks a tier.** Architect Call 1 emits parameters; `ortim/architecture/golden_paths.py` does rule-based scoring (12 tiers: T0–T6 web, M0–M2 mobile, D0–D1 desktop).
 - **DAGs are runtime-validated.** If the LLM emits a cycle, a missing dependency, or an off-RFC module, validators retry up to 3× then escalate to `AWAITING_HITL`.
+
+Want to see the scorer's verdict before committing to a project? `ortim score-tier` runs the algorithm standalone — **no API key, no workspace, deterministic**:
+
+```bash
+ortim score-tier --state --auth --scale large --compliance KVKK,GDPR --audit-heavy
+# → a tier table with the picked architecture, the runner-up, and the score gap
+```
 
 Full specification: **[Ortim_Architecture.md](Ortim_Architecture.md)** (currently mixed TR/EN; full English translation tracked under Phase 4).
 
@@ -168,9 +194,12 @@ Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compa
 
 ```bash
 # Health + setup
-ortim doctor
+ortim doctor                       # keys, runtimes, prompts, templates
 ortim config init                  # one-time provider/key wizard
 ortim config show                  # what's active + where it came from
+ortim config set-role architect --provider anthropic   # per-role override
+ortim config setup-local           # wire up a local Ollama, no API key
+ortim config path                  # where the resolved config file lives
 
 # New project (project mode — cwd-aware)
 mkdir ~/dev/cool && cd ~/dev/cool
@@ -183,24 +212,51 @@ ortim run                          # Architect → RFC_AWAITING_APPROVAL
 ortim advance rfc_approved
 ortim run                          # Orchestrator → tasks_ready
 ortim run-all --phase 1            # Worker × N
+ortim execute T-003                # run a single task through the pipeline
 
-# Observability
-ortim status
-ortim tasks
-ortim retro
-ortim drift-check
+# Brownfield (existing codebase — auto-detected by ortim init)
+ortim inspect                      # codebase scan summary (frameworks, modules)
+ortim rescan                       # refresh the scan after large changes
+ortim baseline --recapture         # re-run the test suite, store the baseline
+
+# Try the deterministic tier scorer (no API key, no workspace)
+ortim score-tier --state --auth --scale medium --compliance KVKK
+
+# Observability + integrity
+ortim status                       # state + history
+ortim tasks                        # task DAG
+ortim gates                        # open HITL gates (G1–G7) + budget status
+ortim states                       # full state machine + legal transitions
+ortim budget --by-provider         # token + USD, per provider
+ortim retro                        # multi-axis rollup over the audit log
+ortim drift-check                  # RFC ↔ DAG ↔ status ↔ audit alignment
+ortim audit-verify                 # walk the hash chain, flag tampering
 ortim show --artifact rfc
 
 # Iteration
 ortim refine "<feedback>"          # dialog-mode refine
 ortim extend "<new feature>"       # DONE project → delta cycle
+ortim extensions                   # extend-cycle history
+
+# Skills (project-specific Worker/Reviewer patterns)
+ortim skill list
+ortim skill show <name>
 
 # Workspace management (from anywhere)
 ortim ls                           # all known workspaces; '*' = active
 ortim use <id|name>                # set active pointer (registry-backed)
 ortim status -p <id>               # target a specific workspace
 ortim workspace archive <id>
+ortim workspace unarchive <id>
+ortim workspace migrate            # upgrade an older layout to the current one
+ortim workspace doctor             # diagnose registry / layout issues
 ortim workspace cleanup --older-than 30 --archived-only --yes
+
+# Governance & cloud sync (preview — see docs/cloud.md)
+ortim cloud login <email>          # authenticate against cloud.ortim.dev
+ortim cloud link --org <id>        # link this workspace to an org project
+ortim cloud sync                   # push redacted audit metadata (offline-safe)
+ortim cloud policy                 # pull + show the org governance policy
 ```
 
 Full reference: `ortim --help`.
@@ -222,6 +278,25 @@ Conditional gates fire mid-execution: **G3** schema/migration, **G4** external A
 
 ---
 
+## Governance & cloud sync (preview)
+
+The audit trail is local-first and works with zero account. For teams that need shared governance, `ortim cloud` adds an **Observer layer** on top — without changing how the pipeline runs:
+
+- **What syncs:** redacted audit metadata + pipeline state only. **Source code is never sent**; PII is redacted before it leaves the machine.
+- **Offline-safe:** if the cloud is unreachable, `ortim cloud sync` prints a warning and exits 0 — the local pipeline is never blocked.
+- **Policy enforcement:** an org policy can pin mandatory gates, an allow-list of providers, and a budget cap; the CLI pulls it and enforces it locally.
+
+```bash
+ortim cloud login you@org.com
+ortim cloud link --org <id>        # link the current workspace to an org project
+ortim cloud sync                   # push redacted metadata
+ortim cloud policy                 # show the org's governance rules
+```
+
+This is an early **preview** pointing at `cloud.ortim.dev`; access is invite-only while it's being scoped. Full payload shape + threat model: **[docs/cloud.md](docs/cloud.md)**.
+
+---
+
 ## License
 
 - **Core** (this repo): [FSL-1.1-Apache-2.0](LICENSE) — Functional Source License, automatically converts to Apache-2.0 after two years. Production use is free; building a competing service against the same APIs is the only thing restricted, and only for two years.
@@ -234,6 +309,7 @@ Conditional gates fire mid-execution: **G3** schema/migration, **G4** external A
 - **[Why Ortim](docs/why-ortim.md)** — value framing, comparison vs vanilla LLM coding, when to use this vs Cursor/Aider/Claude Code.
 - **[Getting started](docs/tutorial/getting-started.md)** — ~15-minute end-to-end tutorial (greenfield + brownfield).
 - **[Failure recovery runbook](docs/runbook/failure-recovery.md)** — what to do when a task lands in `AWAITING_HITL`, budget gate trips, schema migration fails, etc.
+- **[Cloud governance (preview)](docs/cloud.md)** — `ortim cloud` Observer layer: what syncs (redacted metadata only), offline-safety, org policy enforcement.
 - **[Architecture spec](Ortim_Architecture.md)** — full master specification (TR/EN mixed; English-only revision is in flight).
 - **[Golden paths](docs/golden-paths/)** — reference docs for each of the 12 tiers.
 - **[Skill authoring guide](docs/skills/authoring-guide.md)** — how to inject project-specific patterns into Worker/Reviewer prompts.

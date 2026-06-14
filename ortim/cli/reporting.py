@@ -463,6 +463,41 @@ def mutation_test(
         )
 
 
+def audit_verify(
+    project_id: str = typer.Argument(
+        None,
+        help="Workspace ID. If omitted, discovered from cwd.",
+    ),
+) -> None:
+    """Verify the hash-chained audit log is intact (tamper-evidence check).
+
+    Walks `.ortim/audit.jsonl`, recomputing each event's expected `prev_hash`.
+    Exit 0 if the chain is intact, exit 1 (with the offending line) if any
+    event was edited, removed, or reordered after the fact.
+    """
+    from ortim.audit import verify_chain
+
+    _project, store, _ = _resolve_project(project_id)
+    audit_path = store.audit_log_path()
+    result = verify_chain(audit_path)
+
+    if result.ok:
+        console.print(
+            f"[green]Audit chain intact.[/green] {result.total_events} event(s) verified "
+            f"[dim]({audit_path})[/dim]"
+        )
+        return
+
+    console.print(
+        f"[red]Audit chain BROKEN[/red] at line {result.broken_at_line} "
+        f"after {result.total_events} good event(s)."
+    )
+    if result.reason:
+        console.print(f"  reason: {result.reason}")
+    console.print(f"  file: [dim]{audit_path}[/dim]")
+    raise typer.Exit(1)
+
+
 def register(app: typer.Typer) -> None:
     """Wire reporting-module commands onto the top-level Typer app."""
     app.command()(budget)
@@ -470,3 +505,4 @@ def register(app: typer.Typer) -> None:
     app.command()(retro)
     app.command("score-tier")(score_tier_cmd)
     app.command("mutation-test")(mutation_test)
+    app.command("audit-verify")(audit_verify)
