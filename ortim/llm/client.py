@@ -6,8 +6,10 @@
 Anthropic-compatible endpoint) go through the `anthropic` Python SDK
 — only `base_url` differs. `api_kind="openai"` providers (Ollama,
 LM Studio, any OpenAI-compatible local server) go through a plain
-httpx POST to `/v1/chat/completions`. Both paths return an
-`LLMResponse` with the same shape.
+httpx POST to `/v1/chat/completions`. `api_kind="replay"` serves
+recorded responses from a fixture file with no network at all (see
+`ortim/llm/replay.py` — powers the keyless `ortim demo`). All paths
+return an `LLMResponse` with the same shape.
 
 Agent code never sees the provider distinction; it calls
 `LLMClient.call()` and gets back an `LLMResponse` carrying the
@@ -37,6 +39,7 @@ import httpx
 from anthropic import APIConnectionError, APIStatusError, Anthropic
 
 from ortim.env import env_get
+from ortim.llm import replay
 from ortim.llm.providers import ProviderConfig, resolve_provider
 
 # Retry budget. 3 retries = 4 total attempts with ~1s/2s/4s base delay.
@@ -165,18 +168,35 @@ class LLMClient:
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> LLMResponse:
+        # Replay serves from a local fixture — no network, no retries.
+        if self.config.api_kind == "replay":
+            return self._call_replay(system, user)
+
         last_exc: Exception | None = None
         retries_used = 0
 
         for attempt in range(1 + MAX_RETRIES):
             try:
                 if self.config.api_kind == "openai":
-                    return self._call_openai(
+                    resp = self._call_openai(
                         system, user, temperature, max_tokens, retries_used
                     )
-                return self._call_anthropic(
-                    system, user, temperature, max_tokens, retries_used
+                else:
+                    resp = self._call_anthropic(
+                        system, user, temperature, max_tokens, retries_used
+                    )
+                # No-op unless ORTIM_REPLAY_RECORD is set — captures live
+                # exchanges into a replay fixture (see ortim/llm/replay.py).
+                replay.record_call(
+                    system,
+                    user,
+                    text=resp.text,
+                    input_tokens=resp.input_tokens,
+                    output_tokens=resp.output_tokens,
+                    model=resp.model,
+                    provider=resp.provider,
                 )
+                return resp
             except Exception as exc:
                 last_exc = exc
                 if not _is_retryable(exc) or attempt >= MAX_RETRIES:
@@ -194,6 +214,22 @@ class LLMClient:
 
         # Should never reach here, but satisfy type checker.
         raise last_exc  # type: ignore[misc]
+
+    def _call_replay(self, system: str, user: str) -> LLMResponse:
+        """Serve the next recorded response from the replay fixture.
+
+        `model` reports what the recording captured so the audit trail
+        shows which live model originally produced the text; `provider`
+        stays "replay" so budget rollups price the run at $0.
+        """
+        entry = replay.replay_next(system, user)
+        return LLMResponse(
+            text=str(entry.get("text", "")),
+            input_tokens=int(entry.get("input_tokens", 0)),
+            output_tokens=int(entry.get("output_tokens", 0)),
+            model=str(entry.get("model", self.model)),
+            provider=self.config.name,
+        )
 
     def _call_anthropic(
         self,

@@ -53,8 +53,10 @@ def demo(
     intent is never silent.
 
     Approximate cost on DeepSeek-only routing: $0.02-0.05 for planning,
-    +$0.05 per task with --execute. Requires DEEPSEEK_API_KEY or
-    ANTHROPIC_API_KEY; `ortim doctor` to verify env.
+    +$0.05 per task with --execute. With no API key configured at all,
+    the demo falls back to the bundled **recorded replay** (a captured
+    real run of this exact chain) so the walkthrough completes keyless;
+    `ortim doctor` to verify env.
     """
     import subprocess
     import time
@@ -71,8 +73,13 @@ def demo(
     except Exception as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
-    if active.api_key_env is not None:
-        if not os.environ.get(active.api_key_env, "").strip():
+    replay_mode = False
+    if active.api_key_env is not None and not os.environ.get(
+        active.api_key_env, ""
+    ).strip():
+        if provider:
+            # The operator explicitly asked for this provider — a silent
+            # switch to replay would misrepresent what ran. Hard error.
             console.print(
                 f"[red]{active.api_key_env} is not set[/red] "
                 f"(resolved provider: '{active.name}').\n"
@@ -84,6 +91,35 @@ def demo(
                 f"local, key-free runtime"
             )
             raise typer.Exit(code=1)
+        replay_mode = True
+
+    if replay_mode and brief != _DEMO_DEFAULT_BRIEF:
+        console.print(
+            "[red]No API key configured — the recorded demo only covers "
+            "the default brief.[/red]\n"
+            "Fix one of:\n"
+            "  - drop [cyan]--brief[/cyan] to watch the recorded default "
+            "run\n"
+            "  - [cyan]ortim config init[/cyan] to configure a provider "
+            "for live runs"
+        )
+        raise typer.Exit(code=1)
+    if replay_mode and execute_first:
+        console.print(
+            "[yellow]--execute needs a live provider; recorded demo runs "
+            "the planning chain only. Skipping T-001 execution.[/yellow]"
+        )
+        execute_first = False
+
+    if replay_mode:
+        console.print(Panel(
+            "[bold]Recorded demo[/bold] — no API key detected, so this run "
+            "replays a captured real run of the same chain "
+            "([yellow]not a live model[/yellow]). Every artifact you'll "
+            "see (PRD, RFC, task DAG) came from an actual LLM run.\n"
+            "For live runs: [cyan]ortim config init[/cyan]",
+            border_style="yellow",
+        ))
 
     _ensure_workspace_root()
     project_name = f"demo-{int(time.time())}"
@@ -104,6 +140,40 @@ def demo(
     saved_new = os.environ.pop("ORTIM_DIALOG_MODE", None)
     saved_legacy = os.environ.pop("AI_FACTORY_DIALOG_MODE", None)
     os.environ["ORTIM_DIALOG_MODE"] = "off"
+
+    # Chain subprocesses run with cwd=REPO_ROOT (site-packages on a pip
+    # install), where a relative "./workspaces" would resolve somewhere
+    # else than the parent's. Export the parent's resolved root so every
+    # step operates on the project we just created.
+    saved_ws_root = os.environ.get("WORKSPACE_ROOT")
+    os.environ["WORKSPACE_ROOT"] = str(_globals.WORKSPACE_ROOT.resolve())
+
+    # Replay mode pins EVERY role to the replay provider for the whole
+    # subprocess chain — role-specific env (ARCHITECT_PROVIDER etc.) or
+    # DEFAULT_MODEL from the operator's shell/.env must not punch through
+    # to a live endpoint mid-replay. Saved + restored in the finally
+    # block alongside the dialog-mode vars. The cursor state file makes
+    # the fixture position survive across the chain's subprocesses.
+    saved_replay_env: dict[str, str | None] = {}
+    replay_state_file = None
+    if replay_mode:
+        from ortim.llm.replay import STATE_ENV
+        from ortim.llm.router import KNOWN_ROLES
+
+        replay_keys = ["LLM_PROVIDER", "DEFAULT_MODEL", STATE_ENV]
+        for role in KNOWN_ROLES:
+            replay_keys.append(f"{role.upper()}_PROVIDER")
+            replay_keys.append(f"{role.upper()}_MODEL")
+        for key in replay_keys:
+            saved_replay_env[key] = os.environ.pop(key, None)
+
+        replay_state_file = (
+            _globals.WORKSPACE_ROOT / f".replay-state-{project.id}.json"
+        )
+        os.environ[STATE_ENV] = str(replay_state_file)
+        os.environ["LLM_PROVIDER"] = "replay"
+        for role in KNOWN_ROLES:
+            os.environ[f"{role.upper()}_PROVIDER"] = "replay"
 
     def _step(args: list[str], label: str) -> int:
         console.print(f"[cyan]→ {label}[/cyan]")
@@ -168,9 +238,26 @@ def demo(
             os.environ["ORTIM_DIALOG_MODE"] = saved_new
         if saved_legacy is not None:
             os.environ["AI_FACTORY_DIALOG_MODE"] = saved_legacy
+        if saved_ws_root is None:
+            os.environ.pop("WORKSPACE_ROOT", None)
+        else:
+            os.environ["WORKSPACE_ROOT"] = saved_ws_root
+        for key, value in saved_replay_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        if replay_state_file is not None:
+            replay_state_file.unlink(missing_ok=True)
 
     workspace = project.current_metadata_dir(_globals.WORKSPACE_ROOT)
-    console.print("\n[bold green]Demo complete.[/bold green]")
+    if replay_mode:
+        console.print(
+            "\n[bold green]Demo complete.[/bold green] "
+            "[yellow](recorded run — not a live model)[/yellow]"
+        )
+    else:
+        console.print("\n[bold green]Demo complete.[/bold green]")
     console.print(f"Workspace: [cyan]{workspace}[/cyan]")
     console.print("\n[bold]Next steps:[/bold]")
     console.print(

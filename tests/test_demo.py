@@ -45,24 +45,109 @@ def test_demo_default_brief_is_non_empty_english() -> None:
     assert "todo" in _DEMO_DEFAULT_BRIEF.lower()
 
 
-def test_demo_aborts_when_no_llm_key_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No credential for the resolved provider → exit code 1 with a
-    pointer to the config wizard. Critical: this runs in CI / fresh
-    machines where keys are absent and we want a friendly error, not a
-    stack trace from the Babel layer.
-
-    The demo command reads `os.environ` directly (not CliRunner's env=),
-    so we monkeypatch the actual process environment."""
+def test_demo_falls_back_to_recorded_replay_when_no_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No credential + no explicit --provider → the demo must NOT abort;
+    it switches to the replay provider (recorded run) with a visible
+    badge, and pins every role to replay for the subprocess chain so an
+    operator's ARCHITECT_PROVIDER etc. can't punch through to a live
+    endpoint mid-replay. This is the `pip install ortim && ortim demo`
+    keyless activation path."""
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    # Pin to anthropic so the assertion is independent of any
-    # LLM_PROVIDER inherited from the dev `.env`.
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
-    runner = _runner()
-    result = runner.invoke(app, ["demo"], catch_exceptions=False)
+    monkeypatch.setenv("ARCHITECT_PROVIDER", "deepseek")
+
+    seen_env: list[dict[str, str]] = []
+
+    class _Result:
+        returncode = 1  # short-circuit after the first chain step
+
+    def _capture(args: list[str], **kwargs: object) -> _Result:
+        seen_env.append(dict(os.environ))
+        return _Result()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "workspaces"
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
+        with patch("subprocess.run", side_effect=_capture):
+            result = _runner().invoke(app, ["demo"], catch_exceptions=False)
+
+    assert "Recorded demo" in result.stdout
+    assert "is not set" not in result.stdout
+    assert seen_env, "chain did not start — replay fallback aborted early"
+    assert seen_env[0]["LLM_PROVIDER"] == "replay"
+    assert seen_env[0]["ARCHITECT_PROVIDER"] == "replay"
+    assert "ORTIM_REPLAY_STATE" in seen_env[0]
+    # finally-block restored the operator's env after the run.
+    assert os.environ.get("LLM_PROVIDER") == "anthropic"
+    assert os.environ.get("ARCHITECT_PROVIDER") == "deepseek"
+
+
+def test_demo_hard_errors_when_explicit_provider_has_no_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--provider deepseek` without DEEPSEEK_API_KEY stays a hard error —
+    silently swapping an explicitly requested provider for the recording
+    would misrepresent what ran."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    result = _runner().invoke(
+        app, ["demo", "--provider", "deepseek"], catch_exceptions=False
+    )
     assert result.exit_code == 1
-    assert "ANTHROPIC_API_KEY is not set" in result.stdout
+    assert "DEEPSEEK_API_KEY is not set" in result.stdout
     assert "ortim config init" in result.stdout
+
+
+def test_demo_keyless_custom_brief_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The recording only covers the default brief — replaying it against
+    a different brief would show answers to a question the user didn't
+    ask. Clear error instead."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    result = _runner().invoke(
+        app, ["demo", "--brief", "build a chat app"], catch_exceptions=False
+    )
+    assert result.exit_code == 1
+    assert "default brief" in result.stdout
+
+
+def test_demo_keyless_execute_downgrades_to_planning_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--execute without a key: warn + run the planning replay rather
+    than aborting or replaying an execution that wasn't recorded."""
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+
+    captured: list[list[str]] = []
+
+    class _Result:
+        returncode = 0
+
+    def _capture(args: list[str], **kwargs: object) -> _Result:
+        captured.append(list(args))
+        return _Result()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "workspaces"
+        monkeypatch.setattr("ortim.cli._globals.WORKSPACE_ROOT", ws_root)
+        with patch("subprocess.run", side_effect=_capture):
+            result = _runner().invoke(
+                app, ["demo", "--execute"], catch_exceptions=False
+            )
+
+    assert result.exit_code == 0
+    assert "planning chain only" in result.stdout
+    assert captured, "planning chain should still run"
+    assert not any("execute" in c for c in captured)
+    assert "recorded run" in result.stdout
 
 
 def test_demo_passes_when_provider_needs_no_key(

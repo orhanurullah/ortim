@@ -9,9 +9,15 @@ Each entry describes one LLM endpoint the pipeline can route to:
 
 `api_kind` selects which on-the-wire schema the client speaks:
 "anthropic" goes through the `anthropic` SDK; "openai" goes through a
-plain httpx POST to /v1/chat/completions. Agent code is unaware — it
-calls `LLMClient.call(system, user, ...)` and the wrapper picks the
-right path.
+plain httpx POST to /v1/chat/completions; "replay" serves recorded
+responses from a fixture file (no network — powers the keyless
+`ortim demo`). Agent code is unaware — it calls
+`LLMClient.call(system, user, ...)` and the wrapper picks the right path.
+
+`api_kind` is also the extension seam for providers that are neither
+BYO-key nor local: a future `managed` kind (requests proxied through
+api.ortim.dev under a subscription token quota) plugs in the same way —
+new kind + a dispatch branch in `LLMClient.call()`, nothing else moves.
 
 Local providers (Ollama, LM Studio) set `api_key_env=None`; the client
 skips the auth check for them. `OLLAMA_BASE_URL` lets an operator point
@@ -70,6 +76,17 @@ PROVIDERS: dict[str, ProviderConfig] = {
         input_usd_per_m=0.0,
         output_usd_per_m=0.0,
         api_kind="openai",
+    ),
+    # Serves recorded responses from a fixture (see ortim/llm/replay.py).
+    # Keyless by construction; priced 0.0 — no live tokens are consumed.
+    "replay": ProviderConfig(
+        name="replay",
+        api_key_env=None,
+        base_url=None,
+        default_model="recorded",
+        input_usd_per_m=0.0,
+        output_usd_per_m=0.0,
+        api_kind="replay",
     ),
 }
 

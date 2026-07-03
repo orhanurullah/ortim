@@ -14,7 +14,6 @@ and §1.2:
 
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -22,14 +21,36 @@ from unittest.mock import MagicMock, patch
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import pytest  # noqa: E402
 
-def _reload_providers(toml_path: Path, monkeypatch) -> object:
-    """Point ORTIM_CONFIG at `toml_path` and reload the providers module so
-    `_merge_providers()` re-runs against the temp config. Returns the
-    freshly reloaded module."""
-    monkeypatch.setenv("ORTIM_CONFIG", str(toml_path))
+
+@pytest.fixture()
+def _pristine_providers():
+    """Snapshot + restore the provider registries around a test.
+
+    The registries are merged **in place** (never `importlib.reload`d):
+    reloading the module creates new `UnknownProvider` / `ProviderConfig`
+    class objects while every previously-imported binding (ortim.llm
+    package, other test modules) keeps the old ones — `except
+    UnknownProvider` then silently stops catching. That identity break
+    leaked across test files and made the suite order-dependent."""
     import ortim.llm.providers as providers
-    return importlib.reload(providers)
+
+    saved = dict(providers.PROVIDERS)
+    saved_overrides = dict(providers.MODEL_PRICING_OVERRIDES)
+    yield providers
+    providers.PROVIDERS.clear()
+    providers.PROVIDERS.update(saved)
+    providers.MODEL_PRICING_OVERRIDES.clear()
+    providers.MODEL_PRICING_OVERRIDES.update(saved_overrides)
+
+
+def _merge_config(providers, toml_path: Path, monkeypatch) -> object:
+    """Point ORTIM_CONFIG at `toml_path` and re-run `_merge_providers()`
+    against the temp config, mutating the registries in place."""
+    monkeypatch.setenv("ORTIM_CONFIG", str(toml_path))
+    providers._merge_providers()
+    return providers
 
 
 # ---------------------------------------------------------------------
@@ -37,7 +58,9 @@ def _reload_providers(toml_path: Path, monkeypatch) -> object:
 # ---------------------------------------------------------------------
 
 
-def test_provider_toml_partial_override(tmp_path, monkeypatch) -> None:
+def test_provider_toml_partial_override(
+    tmp_path, monkeypatch, _pristine_providers
+) -> None:
     """Setting only base_url for an existing provider must leave pricing,
     default_model, and api_key_env intact — the deep-merge contract."""
     cfg = tmp_path / "config.toml"
@@ -46,7 +69,7 @@ def test_provider_toml_partial_override(tmp_path, monkeypatch) -> None:
         'base_url = "https://proxy.internal/anthropic"\n',
         encoding="utf-8",
     )
-    providers = _reload_providers(cfg, monkeypatch)
+    providers = _merge_config(_pristine_providers, cfg, monkeypatch)
     p = providers.PROVIDERS["anthropic"]
     assert p.base_url == "https://proxy.internal/anthropic"
     # Built-in fields survive the override.
@@ -57,7 +80,9 @@ def test_provider_toml_partial_override(tmp_path, monkeypatch) -> None:
     assert p.api_kind == "anthropic"
 
 
-def test_provider_api_kind_defaults_openai(tmp_path, monkeypatch) -> None:
+def test_provider_api_kind_defaults_openai(
+    tmp_path, monkeypatch, _pristine_providers
+) -> None:
     """A brand-new provider with no api_kind set falls back to "openai"
     — most third-party gateways speak the OpenAI dialect."""
     cfg = tmp_path / "config.toml"
@@ -68,14 +93,16 @@ def test_provider_api_kind_defaults_openai(tmp_path, monkeypatch) -> None:
         'default_model = "anthropic/claude-3.5-sonnet"\n',
         encoding="utf-8",
     )
-    providers = _reload_providers(cfg, monkeypatch)
+    providers = _merge_config(_pristine_providers, cfg, monkeypatch)
     p = providers.PROVIDERS["openrouter"]
     assert p.api_kind == "openai"
     assert p.base_url == "https://openrouter.ai/api/v1"
     assert p.api_key_env == "OPENROUTER_API_KEY"
 
 
-def test_provider_model_pricing_override(tmp_path, monkeypatch) -> None:
+def test_provider_model_pricing_override(
+    tmp_path, monkeypatch, _pristine_providers
+) -> None:
     """Nested per-model pricing wins over the provider's flat rate."""
     cfg = tmp_path / "config.toml"
     cfg.write_text(
@@ -90,7 +117,7 @@ def test_provider_model_pricing_override(tmp_path, monkeypatch) -> None:
         'output_usd_per_m = 15.0\n',
         encoding="utf-8",
     )
-    providers = _reload_providers(cfg, monkeypatch)
+    providers = _merge_config(_pristine_providers, cfg, monkeypatch)
     in_p, out_p = providers.pricing_for(
         "openrouter", "anthropic/claude-3.5-sonnet"
     )
@@ -120,16 +147,11 @@ def _fake_ollama_show_success() -> MagicMock:
     return r
 
 
-def test_setup_local_idempotent(tmp_path, monkeypatch) -> None:
+def test_setup_local_idempotent(tmp_path, monkeypatch, _pristine_providers) -> None:
     """Running `ortim config setup-local --mode hybrid` twice must
     produce a byte-identical config.toml on the second run."""
     cfg_path = tmp_path / "config.toml"
     monkeypatch.setenv("ORTIM_CONFIG", str(cfg_path))
-
-    # Force a known starting state by reloading providers against the
-    # empty target (no [providers.*] sections yet).
-    import ortim.llm.providers as providers
-    importlib.reload(providers)
 
     from typer.testing import CliRunner
     from ortim.config.cli import config_app
