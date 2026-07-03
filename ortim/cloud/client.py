@@ -66,6 +66,8 @@ class CloudClient:
     # ---- auth ----
 
     def login(self, email: str, password: str) -> str:
+        """Legacy email+password login. Google-sign-in accounts have no
+        password — use the device flow (`device_start` / `device_poll`)."""
         _, headers = self._request(
             "POST", "/api/auth/login", {"email": email, "password": password}, auth=False
         )
@@ -74,6 +76,28 @@ class CloudClient:
             raise CloudError("login succeeded but no access_token cookie was returned")
         self.token = token
         return token
+
+    def device_start(self) -> dict:
+        """Begin an RFC 8628 device-authorization flow (pre-auth).
+
+        Returns deviceCode (secret, for polling), userCode (short code the
+        user confirms in the browser), verificationUri, expiresInSeconds,
+        intervalSeconds.
+        """
+        data, _ = self._request(
+            "POST", "/api/ortim/auth/device/start", {}, auth=False
+        )
+        return data
+
+    def device_poll(self, device_code: str) -> dict:
+        """Poll the device flow. `status` is pending | approved | expired;
+        on approved the response carries accessToken/refreshToken exactly
+        once (the server consumes the record)."""
+        data, _ = self._request(
+            "POST", "/api/ortim/auth/device/poll",
+            {"deviceCode": device_code}, auth=False,
+        )
+        return data
 
     # ---- orgs / projects / policy / sync ----
 

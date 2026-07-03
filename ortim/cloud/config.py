@@ -28,6 +28,9 @@ class CloudConfig:
     base_url: str = DEFAULT_BASE_URL
     email: str | None = None
     token: str | None = None
+    refresh_token: str | None = None
+    """Refresh token from the device-code flow. Stored for future silent
+    re-auth; the legacy password flow leaves it None."""
 
     @property
     def logged_in(self) -> bool:
@@ -59,6 +62,8 @@ def load(path: Path | None = None) -> CloudConfig:
         cfg.email = section["email"]
     if isinstance(section.get("token"), str) and section["token"].strip():
         cfg.token = section["token"].strip()
+    if isinstance(section.get("refresh_token"), str) and section["refresh_token"].strip():
+        cfg.refresh_token = section["refresh_token"].strip()
     return cfg
 
 
@@ -71,6 +76,8 @@ def save(cfg: CloudConfig, path: Path | None = None) -> Path:
         lines.append(f'email = "{_q(cfg.email)}"')
     if cfg.token:
         lines.append(f'token = "{_q(cfg.token)}"')
+    if cfg.refresh_token:
+        lines.append(f'refresh_token = "{_q(cfg.refresh_token)}"')
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     if os.name == "posix":
         try:

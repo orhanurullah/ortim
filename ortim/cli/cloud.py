@@ -23,23 +23,131 @@ cloud_app = typer.Typer(help="Ortim Cloud — audit/governance sync")
 def _client(require_auth: bool = True) -> tuple[CloudClient, cloud_config.CloudConfig]:
     cfg = cloud_config.load()
     if require_auth and not cfg.token:
-        console.print("[red]Not logged in.[/red] Run [cyan]ortim cloud login <email>[/cyan].")
+        console.print("[red]Not logged in.[/red] Run [cyan]ortim cloud login[/cyan].")
         raise typer.Exit(1)
     return CloudClient(cfg.base_url, cfg.token), cfg
 
 
+def _device_login(client: CloudClient, cfg: cloud_config.CloudConfig) -> None:
+    """Browser device-code flow (RFC 8628): start → confirm in browser → poll.
+
+    This is the default login because most platform accounts are created
+    with Google sign-in and have no password at all.
+    """
+    import time
+    import webbrowser
+
+    try:
+        start = client.device_start()
+    except CloudError as e:
+        console.print(f"[red]Could not start the login flow:[/red] {e}")
+        raise typer.Exit(1)
+
+    user_code = str(start.get("userCode", ""))
+    device_code = str(start.get("deviceCode", ""))
+    if not user_code or not device_code:
+        console.print(f"[red]Unexpected response from the control plane:[/red] {start}")
+        raise typer.Exit(1)
+    verification_uri = str(start.get("verificationUri") or f"{cfg.base_url}/device")
+    interval = max(1, int(start.get("intervalSeconds", 5)))
+    expires_in = int(start.get("expiresInSeconds", 600))
+    full_uri = f"{verification_uri}?code={user_code}"
+
+    console.print(
+        f"\nConfirm this code in your browser: [bold cyan]{user_code}[/bold cyan]"
+    )
+    console.print(f"  [cyan]{full_uri}[/cyan]")
+    console.print(
+        f"[dim]The code expires in {expires_in // 60} minutes. "
+        "Waiting for approval…[/dim]\n"
+    )
+    try:
+        webbrowser.open(full_uri)
+    except Exception:
+        pass  # headless / no browser — the printed URL is the fallback
+
+    consecutive_errors = 0
+    deadline = time.monotonic() + expires_in
+    while time.monotonic() < deadline:
+        time.sleep(interval)
+        try:
+            resp = client.device_poll(device_code)
+        except CloudError as e:
+            consecutive_errors += 1
+            if consecutive_errors >= 3:
+                console.print(f"[red]Cloud unreachable while waiting:[/red] {e}")
+                raise typer.Exit(1)
+            continue
+        consecutive_errors = 0
+
+        status = str(resp.get("status", ""))
+        if status == "pending":
+            continue
+        if status == "approved":
+            cfg.email = resp.get("email") or cfg.email
+            cfg.token = resp.get("accessToken")
+            cfg.refresh_token = resp.get("refreshToken")
+            if not cfg.token:
+                console.print("[red]Approved, but no access token was returned.[/red]")
+                raise typer.Exit(1)
+            path = cloud_config.save(cfg)
+            console.print(
+                f"[green]Logged in[/green] as {cfg.email} → {cfg.base_url} "
+                f"[dim]({path})[/dim]"
+            )
+            return
+        # expired (or anything unrecognized): the record is gone server-side.
+        console.print(
+            "[red]The code expired before it was approved.[/red] "
+            "Run [cyan]ortim cloud login[/cyan] again."
+        )
+        raise typer.Exit(1)
+
+    console.print(
+        "[red]Timed out waiting for approval.[/red] "
+        "Run [cyan]ortim cloud login[/cyan] again."
+    )
+    raise typer.Exit(1)
+
+
 @cloud_app.command()
 def login(
-    email: str = typer.Argument(..., help="Account email"),
-    password: str = typer.Option(..., prompt=True, hide_input=True, help="Account password"),
+    email: str = typer.Argument(
+        None,
+        help="Account email — only for the legacy password login. "
+        "Omit to sign in via the browser (works for Google accounts).",
+    ),
+    password: str = typer.Option(
+        None, "--password",
+        help="Account password (legacy path; prompted if omitted while "
+        "an email is given).",
+    ),
 ) -> None:
-    """Authenticate against the control plane and store the access token."""
+    """Sign in to Ortim Cloud and store the access token.
+
+    Default (no arguments): browser device-code flow — a short code is
+    confirmed on cloud.ortim.dev/device. Works for Google sign-in
+    accounts, which have no password. `ortim cloud login <email>` keeps
+    the legacy email+password path.
+    """
     cfg = cloud_config.load()
     client = CloudClient(cfg.base_url)
+
+    if email is None:
+        _device_login(client, cfg)
+        return
+
+    if password is None:
+        password = typer.prompt("Password", hide_input=True)
     try:
         token = client.login(email, password)
     except CloudError as e:
         console.print(f"[red]Login failed:[/red] {e}")
+        console.print(
+            "[dim]Signed up with Google? Your account has no password — "
+            "run [cyan]ortim cloud login[/cyan] (no email) to sign in via "
+            "the browser.[/dim]"
+        )
         raise typer.Exit(1)
     cfg.email = email
     cfg.token = token
