@@ -307,6 +307,60 @@ def policy(
     console.print(f"budget cap (USD) : {budget if budget is not None else '[dim]none[/dim]'}")
 
 
+@cloud_app.command("share-audit")
+def share_audit(
+    project: str = typer.Option(None, "--project", "-p", help="Workspace id (default: cwd)"),
+    expires_in_days: int = typer.Option(
+        None, "--expires-in-days",
+        help="Link lifetime in days, 1–365 (server default: 30).",
+    ),
+) -> None:
+    """Share this project's audit trail as a read-only public link.
+
+    Creates a revocable link (ortim.dev/ortim/audit/<token>) anyone can
+    open without an account — hand it to a client or an auditor as proof.
+    The page shows the hash-verified event chain; the data is the same
+    redacted metadata `ortim cloud sync` already pushes (never source
+    code, diffs, or prompts). The URL is shown exactly ONCE: the server
+    stores only a hash of the token. Revoke from the cloud dashboard.
+    """
+    _proj, _store, location = _resolve_project(project)
+    link_state = cloud_sync.load_link_state(location.metadata_dir)
+    if link_state is None:
+        console.print(
+            "[red]Project not linked.[/red] Run [cyan]ortim cloud link --org <id>[/cyan] first."
+        )
+        raise typer.Exit(1)
+    if link_state.synced_seq == 0:
+        console.print(
+            "[yellow]Nothing synced yet[/yellow] — the shared page would be empty. "
+            "Run [cyan]ortim cloud sync[/cyan] first."
+        )
+
+    client, _ = _client()
+    try:
+        resp = client.share_audit(link_state.project_id, expires_in_days)
+    except CloudError as e:
+        console.print(f"[red]Could not create the share link:[/red] {e}")
+        raise typer.Exit(1)
+
+    url = resp.get("url")
+    if not url:
+        console.print(f"[red]Unexpected response from the control plane:[/red] {resp}")
+        raise typer.Exit(1)
+
+    console.print("\n[green]Share link created[/green] (read-only, redacted metadata):")
+    console.print(f"  [bold cyan]{url}[/bold cyan]")
+    expires_at = resp.get("expiresAt")
+    if expires_at:
+        console.print(f"  [dim]expires: {expires_at}[/dim]")
+    console.print(
+        "[dim]This URL is shown only once — copy it now. "
+        "Anyone with the link can view the audit chain until it expires "
+        "or you revoke it from the dashboard.[/dim]"
+    )
+
+
 def register(app: typer.Typer) -> None:
     """Mount the `cloud` subcommand group onto the top-level app."""
     app.add_typer(cloud_app, name="cloud")

@@ -21,6 +21,12 @@ starting with v0.8.0 (first public release).
   does). docs/cloud.md now documents the sync request schema
   field-by-field, and the README states plainly that FSL is
   source-available, not OSI open source.
+- **`ortim cloud share-audit`** — share a project's audit trail as a
+  revocable, read-only public link (`ortim.dev/ortim/audit/<token>`).
+  The page shows the hash-verified event chain without requiring an
+  account; the data is the same redacted metadata `sync` already pushes.
+  The URL is shown exactly once (the server stores only a token hash);
+  links default to a 30-day expiry (`--expires-in-days 1–365`).
 
 ## [0.9.6] — 2026-07-03
 

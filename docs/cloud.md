@@ -78,6 +78,7 @@ You can run the entire pipeline disconnected and sync later; nothing is lost.
 | `ortim cloud link --org <id> [--name <n>] [-p <ws>]` | Create/link the current workspace to an org project (writes `.ortim/cloud.json`) |
 | `ortim cloud sync [-p <ws>]` | Push redacted audit metadata + current pipeline state |
 | `ortim cloud policy [--org <id>] [-p <ws>]` | Pull and display the org governance policy (and cache it locally for enforcement) |
+| `ortim cloud share-audit [--expires-in-days <1–365>] [-p <ws>]` | Create a revocable, read-only public link to this project's audit trail |
 
 A typical first run:
 
@@ -87,6 +88,22 @@ ortim cloud orgs                 # find your org id
 ortim cloud link --org org_123   # link the workspace you're standing in
 ortim cloud sync                 # push what's happened so far
 ```
+
+### Sharing the audit trail with a client
+
+`ortim cloud share-audit` prints a URL (`ortim.dev/ortim/audit/<token>`)
+that anyone can open **without an account** — hand it to a client or an
+auditor as proof of what the pipeline did. The page shows the hash-verified
+event chain and re-checks the linkage on every load.
+
+Things worth knowing before you share:
+
+- The page shows **the same redacted metadata `sync` already pushed** —
+  never source code, diffs, or prompts. Sharing adds an access door, not data.
+- The URL is printed **exactly once**: the server stores only a hash of the
+  token, so a lost link cannot be recovered — create a new one instead.
+- Links expire after 30 days by default (`--expires-in-days` to change) and
+  can be revoked from the cloud dashboard at any time.
 
 ---
 

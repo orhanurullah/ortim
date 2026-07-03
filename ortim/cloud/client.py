@@ -133,3 +133,17 @@ class CloudClient:
     def get_policy(self, org_id: str) -> dict:
         data, _ = self._request("GET", f"/api/ortim/orgs/{org_id}/policy")
         return data
+
+    def share_audit(self, project_id: str, expires_in_days: int | None = None) -> dict:
+        """Create a shareable read-only audit link for a project.
+
+        The response carries the full `url` exactly once — the server stores
+        only a hash of the token, so the link cannot be recovered later.
+        """
+        body: dict = {}
+        if expires_in_days is not None:
+            body["expiresInDays"] = expires_in_days
+        data, _ = self._request(
+            "POST", f"/api/ortim/projects/{project_id}/audit/share", body
+        )
+        return data
