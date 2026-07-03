@@ -60,6 +60,116 @@ def _ensure_workspace_root() -> None:
     WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 
 
+# State → the single most useful next command, printed as a trailing
+# "Next:" line by run/show/status/advance. Templates take `{id}`.
+# Transient states (babel_processing, prd_drafting, ...) map to `run`
+# because re-running resumes them; terminal FAILED points at triage.
+_NEXT_ACTIONS: dict[ProjectState, tuple[str, str]] = {
+    ProjectState.INTAKE: ("ortim run {id}", "start the pipeline (Babel intake)"),
+    ProjectState.BABEL_PROCESSING: ("ortim run {id}", "resume Babel"),
+    ProjectState.INTAKE_DIALOG: (
+        "ortim lock {id}",
+        'lock the intent — or iterate: ortim refine "<feedback>" -p {id}',
+    ),
+    ProjectState.STACK_DIALOG: (
+        "ortim lock {id}",
+        'lock the stack — or iterate: ortim refine "<feedback>" -p {id}',
+    ),
+    ProjectState.PRD_DIALOG: (
+        "ortim lock {id}",
+        'lock the PRD draft — or iterate: ortim refine "<feedback>" -p {id}',
+    ),
+    ProjectState.PRD_DRAFTING: ("ortim run {id}", "resume PRD drafting"),
+    ProjectState.MVP_SCOPE_LOCKING: (
+        "ortim scope {id} --lock",
+        "review + lock the MVP phase split",
+    ),
+    ProjectState.PRD_AWAITING_APPROVAL: (
+        "ortim advance prd_approved -p {id} --note 'reviewed'",
+        "G1 — approve after reading PRD.md",
+    ),
+    ProjectState.PRD_APPROVED: ("ortim run {id}", "Architect drafts the RFC"),
+    ProjectState.RFC_DRAFTING: ("ortim run {id}", "resume RFC drafting"),
+    ProjectState.RFC_AWAITING_APPROVAL: (
+        "ortim advance rfc_approved -p {id} --note 'reviewed'",
+        "G2 — approve after reading RFC.md",
+    ),
+    ProjectState.RFC_APPROVED: ("ortim run {id}", "Orchestrator generates the task DAG"),
+    ProjectState.TASKS_GENERATING: ("ortim run {id}", "resume DAG generation"),
+    ProjectState.TASKS_READY: (
+        "ortim run-all {id}",
+        "execute every task — or inspect first: ortim tasks {id}",
+    ),
+    ProjectState.SCHEMA_AWAITING_APPROVAL: (
+        "ortim advance schema_approved -p {id}",
+        "G3 — approve the schema/migration plan",
+    ),
+    ProjectState.EXECUTING: (
+        "ortim run-all {id}",
+        "continue executing remaining tasks — progress: ortim tasks {id}",
+    ),
+    ProjectState.BUDGET_AWAITING_APPROVAL: (
+        "ortim advance budget_approved -p {id}",
+        "G7 — accept the overage / raise the cap",
+    ),
+    ProjectState.DEPLOY_AWAITING_APPROVAL: (
+        "ortim advance deploy_approved -p {id}",
+        "G6 — approve the deploy",
+    ),
+    ProjectState.DONE: (
+        "ortim retro {id}",
+        'cost + token rollup — or keep building: ortim extend {id} "<brief>"',
+    ),
+    ProjectState.FAILED: (
+        "ortim status {id}",
+        "inspect history; see docs/runbook/failure-recovery.md",
+    ),
+    ProjectState.PAUSED: (
+        "ortim advance <state> -p {id}",
+        "resume — legal targets: ortim states",
+    ),
+    ProjectState.EXTEND_DIALOG: (
+        "ortim lock {id}",
+        'lock the extension intent — or iterate: ortim refine "<feedback>" -p {id}',
+    ),
+    ProjectState.EXTEND_PRD_DIALOG: (
+        "ortim lock {id}",
+        'lock the extension PRD — or iterate: ortim refine "<feedback>" -p {id}',
+    ),
+    ProjectState.EXTEND_PRD_AWAITING_APPROVAL: (
+        "ortim advance extend_prd_approved -p {id} --note 'reviewed'",
+        "G1 (extension) — approve the delta PRD",
+    ),
+    ProjectState.EXTEND_PRD_APPROVED: ("ortim run {id}", "draft the delta RFC"),
+    ProjectState.EXTEND_RFC_DRAFTING: ("ortim run {id}", "resume delta RFC drafting"),
+    ProjectState.EXTEND_RFC_AWAITING_APPROVAL: (
+        "ortim advance extend_rfc_approved -p {id} --note 'reviewed'",
+        "G2 (extension) — approve the delta RFC",
+    ),
+    ProjectState.EXTEND_RFC_APPROVED: (
+        "ortim run {id}",
+        "generate the extension task DAG",
+    ),
+}
+
+
+def _print_next_action(project: "Project") -> None:
+    """Print a single "Next: <command>" hint for the project's state.
+
+    The state machine already knows the legal next steps; this surfaces
+    the most useful one so no command output leaves the operator at a
+    dead end. Silent for states with no mapping.
+    """
+    action = _NEXT_ACTIONS.get(project.state)
+    if action is None:
+        return
+    command, why = action
+    console.print(
+        f"[bold]Next:[/bold] [cyan]{command.format(id=project.id)}[/cyan]"
+        f"[dim] — {why.format(id=project.id)}[/dim]"
+    )
+
+
 def _resolve_project(arg: str | None):
     """Resolve a workspace + load its Project for a CLI command.
 

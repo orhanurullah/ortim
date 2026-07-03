@@ -14,7 +14,8 @@ from ortim.cli import _globals
 from ortim.cli._globals import (
     console,
     _apply_invocation_overrides, _block_if_archived,
-    _ensure_workspace_root, _load_codebase_summary, _resolve_project,
+    _ensure_workspace_root, _load_codebase_summary, _print_next_action,
+    _resolve_project,
 )
 from ortim.env import env_get
 from ortim.orchestrator import InvalidTransition, Project, ProjectState
@@ -240,6 +241,7 @@ def status(
                 event.note,
             )
         console.print(history_table)
+    _print_next_action(project)
 def inspect(
     project_id: str = typer.Argument(
         None,
