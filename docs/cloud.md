@@ -16,7 +16,17 @@ of runs across many machines.
 ## What syncs, and what never leaves your machine
 
 `ortim cloud sync` reads the local hash-chained audit log (`.ortim/audit.jsonl`)
-and pushes one redacted `SyncEvent` per audit record:
+and sends a single request body (`OrtimSyncRequest` on the server) with
+exactly these top-level fields:
+
+| Field | Contents |
+|---|---|
+| `currentState` | The pipeline state name (`tasks_ready`, `executing`, …) |
+| `taskDagMetadata` | DAG *structure* metadata only — task titles, dependencies, module scopes. Never task code |
+| `auditChainHeadHash` | SHA-256 head of the pushed chain segment |
+| `events` | The list of redacted `SyncEvent`s below |
+
+Each audit record becomes one redacted `SyncEvent`:
 
 | Field | Contents |
 |---|---|
@@ -60,7 +70,8 @@ You can run the entire pipeline disconnected and sync later; nothing is lost.
 
 | Command | What it does |
 |---|---|
-| `ortim cloud login <email>` | Authenticate against the control plane; stores the access token locally |
+| `ortim cloud login` | Sign in via the browser (device code): confirm a short code on `cloud.ortim.dev/device`. Works for Google sign-in accounts, which have no password |
+| `ortim cloud login <email> [--password …]` | Legacy email+password path |
 | `ortim cloud logout` | Clear the stored token |
 | `ortim cloud status` | Show endpoint, account, and login state |
 | `ortim cloud orgs` | List organizations you belong to (role + seat usage) |
@@ -71,7 +82,7 @@ You can run the entire pipeline disconnected and sync later; nothing is lost.
 A typical first run:
 
 ```bash
-ortim cloud login you@org.com
+ortim cloud login                # opens the browser; confirm the short code
 ortim cloud orgs                 # find your org id
 ortim cloud link --org org_123   # link the workspace you're standing in
 ortim cloud sync                 # push what's happened so far

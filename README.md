@@ -257,7 +257,7 @@ ortim workspace doctor             # diagnose registry / layout issues
 ortim workspace cleanup --older-than 30 --archived-only --yes
 
 # Governance & cloud sync (preview — see docs/cloud.md)
-ortim cloud login <email>          # authenticate against cloud.ortim.dev
+ortim cloud login                  # sign in via browser (device code; Google accounts OK)
 ortim cloud link --org <id>        # link this workspace to an org project
 ortim cloud sync                   # push redacted audit metadata (offline-safe)
 ortim cloud policy                 # pull + show the org governance policy
@@ -291,7 +291,7 @@ The audit trail is local-first and works with zero account. For teams that need 
 - **Policy enforcement:** an org policy can pin mandatory gates, an allow-list of providers, and a budget cap; the CLI pulls it and enforces it locally.
 
 ```bash
-ortim cloud login you@org.com
+ortim cloud login                  # browser device-code sign-in (no password needed)
 ortim cloud link --org <id>        # link the current workspace to an org project
 ortim cloud sync                   # push redacted metadata
 ortim cloud policy                 # show the org's governance rules
@@ -303,8 +303,11 @@ This is an early **preview** pointing at `cloud.ortim.dev`; access is invite-onl
 
 ## License
 
+To be precise about what FSL is: Ortim's core is **source-available, not OSI open source** — you can read, build, modify, and use it in production for free from day one, but each release only becomes Apache-2.0 (true open source) two years after it ships.
+
 - **Core** (this repo): [FSL-1.1-Apache-2.0](LICENSE) — Functional Source License, automatically converts to Apache-2.0 after two years. Production use is free; building a competing service against the same APIs is the only thing restricted, and only for two years.
 - **Enterprise** (`enterprise/` — multi-tenant orchestrator, SSO, audit retention, SLA): [Commercial](LICENSE.commercial). Currently a stub; first beta enterprise pilot is being scoped.
+- **Security policy + threat model:** [SECURITY.md](SECURITY.md) — what leaves your machine (and what never does), key handling, how to report a vulnerability.
 
 ---
 
