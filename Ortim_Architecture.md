@@ -40,18 +40,18 @@ Ortim, yapay zeka destekli yazılım geliştirmedeki **5 kronik sorunu** çözer
 ## 3. Katmanlar
 
 ### 3.1 Babel (Intent Capture)
-- Konum: `runtime/babel/`
-- Sözlük: `docs/glossary/`
+- Konum: `ortim/babel/`
+- Sözlük: `ortim/_assets/glossary/`
 - Görev: Türkçe serbest metin → structured English JSON intent
 - Round-trip validation: TR → EN → TR geri çevrim kullanıcıya gösterilir
 - Çıktı: `workspaces/{tenant}/{id}/intent.json`
 
 ### 3.2 Memory (3-Tier Knowledge)
-- **L1 Immutable Principles** — `docs/principles/` — her promptta yüklenir (≤500 satır cap)
-- **L2 Curated Patterns** — `docs/golden-paths/`, `docs/patterns/` — RAG ile retrieve
+- **L1 Immutable Principles** — `ortim/_assets/principles/` — her promptta yüklenir (≤500 satır cap)
+- **L2 Curated Patterns** — `ortim/_assets/golden-paths/`, `ortim/_assets/skills/` — RAG ile retrieve
 - **L3 Episodic Memory** — `docs/adr/` — her PR sonrası yazılır (Reviewer üretir)
 - Çakışma önceliği: L1 > L2 > L3
-- Konum: `runtime/memory/`
+- Konum: `ortim/memory/`
 
 ### 3.3 Architecture (Golden Paths)
 - Web tier'ları: T0 (static page) → T6 (event-driven/CQRS), default T4
@@ -59,13 +59,13 @@ Ortim, yapay zeka destekli yazılım geliştirmedeki **5 kronik sorunu** çözer
 - Desktop tier'ları (M1): D0 (native) / D1 (Tauri, Electron — default)
 - Decision matrix: scale, team size, compliance (KVKK/GDPR/HIPAA), latency SLO, budget
 - Compliance overlay: KVKK seçilirse data residency + audit log + RTBF gereksinimleri otomatik inject
-- Konum: `docs/golden-paths/`
+- Konum: `ortim/_assets/golden-paths/`
 
 ### 3.4 Orchestration (State Machine)
 - States: INTAKE → BABEL_PROCESSING → PRD_DRAFTING → PRD_AWAITING_APPROVAL → PRD_APPROVED → RFC_DRAFTING → RFC_AWAITING_APPROVAL → RFC_APPROVED → TASKS_GENERATING → TASKS_READY → EXECUTING → DONE / FAILED / PAUSED
 - Transitions explicit ve validate edilir — LLM "atlama" yapamaz
 - Persistent state: `workspaces/{tenant}/{id}/state.json`
-- Konum: `runtime/orchestrator/`
+- Konum: `ortim/orchestrator/`
 
 ### 3.5 Execution (Workers)
 - Worker ajan tek atomic task çalıştırır
@@ -73,7 +73,7 @@ Ortim, yapay zeka destekli yazılım geliştirmedeki **5 kronik sorunu** çözer
 - Adaptive retry: complexity'e göre (default 3, kompleks task'larda 5)
 - Concurrency: file-level lock, task DAG paralelize (worktree mode)
 - Sandbox: structural — extension whitelist (app_class'a göre conditional), path scope, symlink resolution
-- Konum: `runtime/executor/`
+- Konum: `ortim/executor/`
 
 ### 3.6 Quality (Multi-Reviewer)
 4 paralel reviewer her PR için:
@@ -135,20 +135,20 @@ Ortim, yapay zeka destekli yazılım geliştirmedeki **5 kronik sorunu** çözer
 1. Bu dosya (Ortim_Architecture.md)
 2. `README.md` — kurulum
 3. `LICENSE` — FSL-1.1-Apache-2.0 koşulları
-4. `docs/principles/core.md` — L1 kurallar
-5. `docs/golden-paths/T4-modular-monolith.md` — default web tier
-6. `docs/golden-paths/M1-flutter-rn.md` — default mobile tier (M1 sonrası)
-7. `agents/*.md` — ajan promptları
-8. `M1-plan.md` — aktif milestone planı
+4. `ortim/_assets/principles/core.md` — L1 kurallar
+5. `ortim/_assets/golden-paths/T4-modular-monolith.md` — default web tier
+6. `ortim/_assets/golden-paths/M1-flutter-rn.md` — default mobile tier (M1 sonrası)
+7. `ortim/_assets/agents/*.md` — ajan promptları
+8. `docs/backlog.md` — açık iş kalemleri
 
 **Runtime başlatma:**
-1. `runtime/main.py` — CLI entry
-2. `runtime/orchestrator/state_machine.py` — flow tanımı
-3. `runtime/orchestrator/project.py` — lifecycle
+1. `ortim/main.py` — CLI entry
+2. `ortim/orchestrator/state_machine.py` — flow tanımı
+3. `ortim/orchestrator/project.py` — lifecycle
 
 ## 7. Immutable Principles (özet)
 
-Detay: `docs/principles/core.md`
+Detay: `ortim/_assets/principles/core.md`
 
 - Always use Dependency Injection
 - Ports & Adapters for external services
@@ -173,7 +173,7 @@ Detay: `docs/principles/core.md`
 
 ## 9. Open core boundary
 
-- **Core (FSL-1.1-Apache-2.0):** runtime/, agents/, docs/, tests/, scripts/, fixtures/, repo root.
+- **Core (FSL-1.1-Apache-2.0):** ortim/ (kod + `_assets/`), docs/, tests/, scripts/, fixtures/, repo root.
 - **Enterprise (Commercial):** enterprise/ — multi-tenant orchestrator, SSO, off-site audit retention, SLA support.
 - **Boundary rule:** Audit log'tan derive edilebilen her şey core. Tenant'lar arası paylaşılan altyapı gerektiren her şey enterprise.
 

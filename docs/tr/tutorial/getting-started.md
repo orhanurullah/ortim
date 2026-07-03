@@ -7,7 +7,7 @@
 > İlk projeni 15 dakikada bitirmek için adım adım kılavuz. Yazılım geliştirici için yazılmıştır; terminal kullanımı + bir LLM API key'i + temel git bilgisi gerektirir.
 
 Bu rehber:
-- Ne **değil**: mimari spec (o [`Ortim_Architecture.md`](../../Ortim_Architecture.md)). Tüm CLI komutlarının referansı (o `ortim --help`).
+- Ne **değil**: mimari spec (o [`Ortim_Architecture.md`](../../../Ortim_Architecture.md)). Tüm CLI komutlarının referansı (o `ortim --help`).
 - Ne **dir**: sıfırdan ilk projene kadar yapılacaklar listesi + neyin neden öyle çalıştığı.
 
 İçindekiler:
@@ -512,15 +512,15 @@ Project mode'da `cleanup` sadece `.ortim/` namespace'ini siler — kullanıcı k
 
 ## 7. Buradan sonra nereye
 
-- **Daha derin mimari:** [`Ortim_Architecture.md`](../../Ortim_Architecture.md) — agent'lar, state machine, audit, RAG.
-- **Tier seçim mantığı:** [`docs/golden-paths/`](../golden-paths/) — her tier için reference doc.
-- **Yeni skill yazmak:** [`docs/skills/authoring-guide.md`](../skills/authoring-guide.md) (yakında — Faz 2).
+- **Daha derin mimari:** [`Ortim_Architecture.md`](../../../Ortim_Architecture.md) — agent'lar, state machine, audit, RAG.
+- **Tier seçim mantığı:** [`ortim/_assets/golden-paths/`](../../../ortim/_assets/golden-paths/) — her tier için reference doc (pakete gömülü).
+- **Yeni skill yazmak:** [`docs/skills/authoring-guide.md`](../../skills/authoring-guide.md) (yakında — Faz 2).
 - **Brownfield (mevcut codebase):** `cd <project> && ortim init "<brief>"` — manifest dosyaları varsa auto-detect. `ortim inspect` ile baseline'ı incele.
 - **İteratif geliştirme:** DONE projeye delta ekle — proje dizininden `ortim extend "<yeni feature brief>"`. Farklı dizindeysen `ortim extend "..." -p <id>`.
 - **Birden çok workspace yönetimi:** `ortim ls` (liste) · `ortim use <id|name>` (active context) · `ortim workspace {show,archive,cleanup,doctor,migrate}`.
 - **Pool → project migration (legacy):** `ortim workspace migrate <pool-id> --to <path>` — pool layout'unu yeni dizine taşır, default `--copy` ile rollback-safe.
 - **Audit + drift kontrolü:** `ortim drift-check`, `ortim audit-verify`.
-- **Roadmap + bilinen açıklar:** [`docs/plans/2026-Q2-roadmap.md`](../plans/2026-Q2-roadmap.md), [`docs/backlog.md`](../backlog.md).
+- **Bilinen açıklar:** [`docs/backlog.md`](../../backlog.md) — kanonik "şu an açık olan" görünümü.
 
 ---
 

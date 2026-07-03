@@ -1,185 +1,60 @@
-# Ortim (TR arşiv)
+# Ortim — Türkçe giriş
 
-> **English-canonical:** The English version at [`README.md`](../../README.md) is the canonical source. This Turkish translation is preserved for historical reference and may lag behind. Yeni özellikler için İngilizce sürümü esas alın.
+> Bu, kısa bir giriş kapısıdır. **Tüm ayrıntı** kapsamlı kullanım rehberindedir:
+> [`kullanim-rehberi.md`](./kullanim-rehberi.md) — kurulumdan hata kurtarmaya, her
+> adım ve her durum.
+>
+> Kanonik (en güncel) kaynak İngilizce [`../../README.md`](../../README.md)'dir;
+> bu Türkçe yüzey ondan biraz geride kalabilir.
 
----
+Ortim, tek paragraflık bir brief'i → çalışan, gözden geçirilmiş, **denetim izli** koda
+dönüştüren disiplinli, çok-ajanlı bir AI yazılım fabrikasıdır. Felsefe: *markdown bilgiyi
+söyler, runtime kuralı zorlar.* LLM "atlamak" istese bile deterministik state machine, iki
+zorunlu insan kapısı (G1=PRD, G2=RFC), kural-tabanlı tier scorer ve DAG validator engeller.
 
-> Yapay zeka destekli, sıkı kurallı, çok-ajanlı yazılım geliştirme platformu.
-
-Ortim Türkçe brief'inden çalışan koda — PRD → RFC → Task DAG → Worker + Reviewer chain'i ile — götürür. Felsefe net: **markdown bilgiyi söyler, runtime kuralı zorlar**. LLM "atlamak" istese bile state machine, deterministik tier scorer ve DAG validator engeller.
-
-```bash
-pip install ortim
-```
-
-Gereksinim: Python ≥ 3.11, bir LLM API key (DeepSeek veya Anthropic).
-
-## Ne işe yarar
-
-LLM ile kod yazmanın yaygın acılarını yapısal olarak çözer:
-
-- **Sonsuz hata döngüleri yok** — her task için 3-deneme bütçesi, sonrasında `AWAITING_HITL`. Aynı failure'ı sessizce tekrarlamaz; Reviewer geri bildirimi yeni denemeye inject edilir.
-- **Belge-tabanlı akış** — PRD (ne) → RFC (nasıl) → Task DAG (atomik iş paketleri). Her ajan kendi katmanında kalır, biri diğerinin işini gizlice yapmaz.
-- **2 zorunlu insan onay noktası** (G1=PRD, G2=RFC) artı 5 koşullu gate (schema, external integration, security, deploy, budget) — kritik anlarda akış durur, sen onaylarsın.
-- **Çift-modelli ekonomi** — pahalı kararlar (Architect, Security Reviewer) Claude'da, ucuz/yüksek-hacim iş (Babel, Worker) DeepSeek'te kalabilir. Tek pipeline, başına ~$0.02-0.05 planning maliyeti.
-- **Audit + tamper-evidence** — her LLM çağrısı, her state geçişi, her hook çıktısı hash-chained JSONL'e düşer. PII redaction (KVKK/GDPR) default açık.
-- **Brownfield desteği** — `ortim init` cwd'deki mevcut Flutter/Tauri/React/Node/Python projesine plug-in olur; manifest auto-detect (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, ...), import-graph extraction, scope-aware task generation.
-- **Project mode (v0.9+)** — git/cargo/claude-code patterned cwd-aware execution. `cd <dir> && ortim status` her şeyi keşfeder.
-
-## Hızlı başlangıç
+## Kurulum
 
 ```bash
-# Kendi projenin dizinine geç
-cd ~/dev/todo-app
-
-# 1) Workspace init et — cwd'de .ortim/ oluşur, brownfield otomatik tespit
-ortim init "Bir görev yönetim CLI'sı istiyorum, Python + SQLite, tek kullanıcı"
-
-# 2) Babel + Analyst + Stack diyaloğu — PRD'ye doğru ilerleme
-ortim run
-
-# 3) PRD'yi gözden geçir, onayla (G1)
-ortim advance prd_approved
-
-# 4) Architect RFC çizsin
-ortim run
-
-# 5) RFC'yi gözden geçir, onayla (G2)
-ortim advance rfc_approved
-
-# 6) Orchestrator DAG üretsin
-ortim run
-
-# 7) DAG'ı sıralı (veya paralel, --parallel) koştur
-ortim run-all
-
-# Maliyet + durum
-ortim budget
-ortim status
-
-# Diğer projeler de var mı?
-ortim ls
+pip install ortim          # Python ≥ 3.11
+ortim config init          # sağlayıcı (DeepSeek / Anthropic / yerel Ollama) + anahtar
+ortim doctor               # ortam sağlık kontrolü
 ```
 
-Her komut arg yoksa cwd'deki `.ortim/`'i keşfeder. Pool layout'undaki eski workspace'lerle çalışmak için `--project <id>` flag'i hâlâ var (geriye uyumlu).
+`.env` şart değil; `ortim config init` `~/.ortim/config.toml`'a yazar. API anahtarı olmadan
+denemek için: `ortim demo` (veya tamamen yerel: `ortim demo --provider ollama`).
 
-Default'lar üretim-için-hazır: dialog mode açık, G1/G2 zorunlu insan onayı, Worker test komutunu önceden yazılı `.ortim.env`'den okur, git branch izolasyonu auto.
+## Nereden devam etmeli
 
-Hızlı tam-pipeline demo'su (insan onay adımları otomatik):
-
-```bash
-ortim demo --brief "Mini bir kişisel finans REST API. JWT auth, gelir/gider CRUD, aylık özet. Python + FastAPI + SQLite."
-```
-
-Demo tüm planning chain'i (Babel → Analyst → Architect → Orchestrator) sondan sona koştur; ~$0.02-0.05 maliyet (DeepSeek).
-
-## Multi-provider
-
-`ortim` her ajan rolünü ayrı bir LLM provider'a yönlendirebilir. `.env`:
-
-```ini
-# Tek provider yeterli
-DEEPSEEK_API_KEY=sk-...
-
-# Veya kritik rolleri Anthropic'e yönlendir
-ANTHROPIC_API_KEY=sk-ant-...
-ARCHITECT_PROVIDER=anthropic
-SECURITY_REVIEWER_PROVIDER=anthropic
-```
-
-Bir tam planning chain DeepSeek'te ~$0.01. Architect + Security Reviewer Anthropic'teyse ~$0.05-0.10. Mevcut provider'lar: `anthropic`, `deepseek`, `ollama` (lokal/self-host), `openai`-uyumlu endpoint'ler.
-
-## Mimari özet
-
-```
-[TR brief]
-   ↓ Babel (TR → structured intent)
-intent.json
-   ↓ IntentAnalyst + StackAnalyst + PRDAnalyst (M2 conversational)
-PRD.md + stack.json
-   ↓ G1 — PRD onayı
-   ↓ Architect (Call 1: tier scorer inputs, Call 2: RFC)
-RFC.md + golden_path_inputs.json
-   ↓ G2 — RFC onayı
-   ↓ Orchestrator (TaskDAG, Hard Rule 13: DAG ⊂ RFC modülleri)
-task_dag.json + tasks/T-NNN.md
-   ↓ Worker + Reviewer (chain: Code + Security + Test + Perf)
-   ↓ Hooks (pre_commit / pre_deploy)
-DONE
-```
-
-İki invariant koruma altında:
-
-- **Tier seçimini LLM yapmaz.** Architect Call 1 PRD'den parametre çıkarır; `ortim/architecture/golden_paths.py` kural-temelli skor hesaplar. 7 tier (T0-T6 web + M0-M2 mobile + D0-D1 desktop).
-- **DAG'ı runtime validate eder.** LLM cycle, eksik dep, RFC dışı modül üretirse 3× retry; sonrasında `AWAITING_HITL`.
-
-Detaylı spec: [`Ortim_Architecture.md`](./Ortim_Architecture.md).
-
-## CLI komutları
-
-| Komut | Amaç |
+| İhtiyaç | Doküman |
 |---|---|
-| `ortim doctor` | Environment health check (Python, API keys, runtime binaries) |
-| `ortim new <brief> --name <ad>` | Yeni proje aç |
-| `ortim demo --brief "..."` | Tam pipeline demo (G1/G2 auto-approve) |
-| `ortim run <id>` | State'e göre uygun ajanı koştur |
-| `ortim discuss <id>` / `refine <id> "<feedback>"` / `lock <id>` | M2 conversational intake (intent / stack / PRD diyaloğu) |
-| `ortim advance <id> <target>` | Manuel state ilerletme (gate onayı, vs.) |
-| `ortim tasks <id>` | TaskDAG + batch'ler |
-| `ortim execute <id> <task-id>` | Tek task'ı Worker → tests → Reviewer pipeline'ından geçir |
-| `ortim run-all <id> [--parallel]` | DAG'ı topolojik batch'lerde koştur |
-| `ortim extend <id> "<brief>"` | DONE projeye iteratif feature delta'sı (M3.1) |
-| `ortim budget <id>` / `ortim retro <id>` | Token + USD raporu / per-task analiz |
-| `ortim drift-check <id>` | Multi-cycle integrity check |
-| `ortim states` | Tüm state'ler ve izinli geçişler |
+| **Her şey** — komutlar, akış, gate'ler, kurtarma, maliyet | [`kullanim-rehberi.md`](./kullanim-rehberi.md) |
+| Adım-adım ilk proje (~15 dk) | [`tutorial/getting-started.md`](./tutorial/getting-started.md) |
+| Bir görev takıldı / gate tetiklendi → kurtarma | [`runbook/failure-recovery.md`](./runbook/failure-recovery.md) |
+| Mimari spec (TR/EN karışık) | [`../../Ortim_Architecture.md`](../../Ortim_Architecture.md) |
+| İngilizce kanonik README | [`../../README.md`](../../README.md) |
 
-Tam liste: `ortim --help`.
+## En kısa akış
 
-## State machine ve HITL gate'ler
-
-```
-intake → babel → intake_dialog → stack_dialog → prd_dialog → prd_drafting
-       → prd_awaiting_approval → prd_approved
-                 ↑ G1 (zorunlu)
-       → rfc_drafting → rfc_awaiting_approval → rfc_approved
-                              ↑ G2 (zorunlu)
-       → tasks_generating → tasks_ready → executing → done
+```bash
+mkdir ~/dev/proje && cd ~/dev/proje
+ortim init "<brief>"        # .ortim/ oluşur (brownfield otomatik tespit)
+ortim run                   # Babel + Analyst → PRD taslağı
+ortim scope --lock          # MVP kapsamını kilitle → G1
+ortim advance prd_approved  # G1 onayı
+ortim run                   # Architect → RFC
+ortim advance rfc_approved  # G2 onayı
+ortim run                   # Orchestrator → görev DAG'ı
+ortim run-all --phase 1     # Worker + Reviewer (MVP görevleri)
 ```
 
-5 koşullu gate: **G3** (schema/migration), **G4** (external API call detected), **G5** (security severity ≥ medium), **G6** (deploy), **G7** (budget cap aşıldı). Her gate task'ı `AWAITING_HITL`'e gönderir, ilerleme `ortim advance ... <state>_approved`'a kadar durur.
+Her komut bulunduğun dizindeki `.ortim/`'i keşfeder (cwd-aware). Ayrıntılı seçenekler,
+tüm state'ler ve hata durumları için → [`kullanim-rehberi.md`](./kullanim-rehberi.md).
 
 ## Lisans
 
-**Core**: [FSL-1.1-Apache-2.0](./LICENSE) — 2 yıl Functional Source License (non-compete), sonra otomatik Apache-2.0'a dönüşür.
+- **Core**: [FSL-1.1-Apache-2.0](../../LICENSE) — 2 yıl Functional Source License
+  (non-compete), sonra otomatik Apache-2.0.
+- **Enterprise** (`enterprise/`): [Commercial](../../LICENSE.commercial) — multi-tenant
+  orchestrator, SSO, audit retention, SLA. Şu an iskelet.
 
-**Enterprise** (`enterprise/` dizini, M5+ kapsamı): [Commercial](./LICENSE.commercial). Multi-tenant orchestrator, SSO, audit retention, SLA. Şu an boş iskelet.
-
-## Daha fazla
-
-- **Mimari**: [`Ortim_Architecture.md`](./Ortim_Architecture.md) — full spec
-- **Başlangıç rehberi**: [`docs/tutorial/getting-started.md`](./docs/tutorial/getting-started.md) — 15 dakikalık adım adım
-- **Hata kurtarma**: [`docs/runbook/failure-recovery.md`](./docs/runbook/failure-recovery.md)
-- **Sürüm geçmişi**: [`CHANGELOG.md`](./CHANGELOG.md)
-- **Geliştirici kurulumu** (katkı için): repo'yu klonla, `pip install -e .[dev]`, `pytest`
-
-## Geliştirme
-
-```bash
-git clone https://github.com/orhanurullah/ortim.git
-cd ortim
-python -m venv .venv
-.venv/Scripts/activate            # Windows
-# source .venv/bin/activate       # macOS/Linux
-pip install -e .[dev]
-
-ruff check .
-mypy ortim
-pytest
-```
-
-606 birim/entegrasyon testi, 22 deselect edilmiş e2e baseline (real-LLM fixture'lı, `-m e2e` ile opt-in). Tüm suite ~25 saniye.
-
-## Sorun bildirimi + destek
-
-- Issues: [github.com/orhanurullah/ortim/issues](https://github.com/orhanurullah/ortim/issues)
-- Lisans soruları: `LICENSE` ve `LICENSE.commercial` notlarına bak; özel durumlar için `contact@ortim.dev`
+Sorun bildirimi: [github.com/orhanurullah/ortim/issues](https://github.com/orhanurullah/ortim/issues)

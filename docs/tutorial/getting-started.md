@@ -530,14 +530,14 @@ In Project Mode, `cleanup` only deletes `.ortim/` — your generated code is unt
 
 - **The value pitch:** [`docs/why-ortim.md`](../why-ortim.md) — what the structural choices buy you, comparison vs Cursor/Aider/Claude Code.
 - **Architecture deep dive:** [`Ortim_Architecture.md`](../../Ortim_Architecture.md) — agents, state machine, audit, RAG.
-- **Tier selection logic:** [`docs/golden-paths/`](../golden-paths/) — reference doc per tier.
+- **Tier selection logic:** [`ortim/_assets/golden-paths/`](../../ortim/_assets/golden-paths/) — reference doc per tier (bundled with the package).
 - **Authoring skills:** [`docs/skills/authoring-guide.md`](../skills/authoring-guide.md) — inject project-specific patterns into Worker/Reviewer prompts.
 - **Brownfield (existing codebase):** `cd <project> && ortim init "<brief>"` — manifest-based auto-detection. `ortim inspect` shows the baseline.
 - **Iteration:** `ortim extend "<feature brief>"` from inside a DONE project. From elsewhere: `ortim extend "..." -p <id>`.
 - **Multiple workspaces:** `ortim ls` (list), `ortim use <id|name>` (active context), `ortim workspace {show,archive,cleanup,doctor,migrate}`.
 - **Pool → project migration (legacy):** `ortim workspace migrate <pool-id> --to <path>` — moves a pool workspace to project mode (rollback-safe `--copy` default).
 - **Audit + drift:** `ortim drift-check`, `ortim audit-verify`.
-- **Roadmap + open items:** [`docs/plans/2026-Q2-roadmap.md`](../plans/2026-Q2-roadmap.md), [`docs/backlog.md`](../backlog.md).
+- **Open items:** [`docs/backlog.md`](../backlog.md) — the canonical "what's open now" view.
 
 ---
 

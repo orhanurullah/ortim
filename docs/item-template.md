@@ -1,5 +1,9 @@
 # Item template — how to write a new tespit.md entry
 
+> Note: `tespit.md` is the internal chronological discovery log (kept under
+> `_internal/notes/`, not published). This template documents its entry format;
+> the public status projection lives in [`backlog.md`](./backlog.md).
+
 > **Why this exists.** Items entered tespit.md historically as free-form prose. The structure that worked got copied; the structure that didn't (the missing piece) recurred. Items 41 → 41' and BaaS-drift → 47 / 47b were both cascades where a fix shipped without checking what downstream coverage layer also needed widening. This template encodes the lesson.
 >
 > **When to use.** Any new tespit.md entry that proposes a fix or documents a structural finding. Observation-only entries (run summaries, status updates) don't need the full template — they get short-form chronological notes.

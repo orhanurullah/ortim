@@ -139,7 +139,7 @@ A single proof-point run from the project memory, `proofpoint-v3` (2026-05-14):
 - Cost: **~$0.16** total for the day across three proof-point runs. The successful single-run was ≈$0.05.
 - Total wall time: ~25 minutes including the developer reading the PRD and RFC.
 
-**Different runs, same direction.** Across the documented proof-point series the pattern holds: 60–80 % first-attempt approval in greenfield, sub-$0.10 per planning chain, zero hallucinated libraries on the 12-tier stable set. See `tespit.md` for the raw forensic log.
+**Different runs, same direction.** Across the documented proof-point series the pattern holds: 60–80 % first-attempt approval in greenfield, sub-$0.10 per planning chain, zero hallucinated libraries on the 12-tier stable set. The raw run-by-run forensic log is kept internally.
 
 This isn't free — Ortim asks for two human approvals (G1, G2) per project that bare LLM coding doesn't. You're trading roughly 5 minutes of focused reading per gate for the structural safety. If your project is one-prompt-throwaway, this trade is not worth it. If you're shipping something that has to last a year, it is.
 
@@ -213,4 +213,4 @@ Ortim is **not** for:
 - What to do when something breaks: [docs/runbook/failure-recovery.md](runbook/failure-recovery.md)
 - The deep architectural spec: [Ortim_Architecture.md](../Ortim_Architecture.md)
 
-Honest report from the trenches lives in `tespit.md` (project memory / forensic log) and `docs/backlog.md` (canonical open-item view). Both files are deliberately uncurated — what you see is what's actually under work, not a marketing snapshot.
+Honest report from the trenches lives in [`docs/backlog.md`](backlog.md) (canonical open-item view); the raw chronological forensic log is kept internally. The backlog is deliberately uncurated — what you see is what's actually under work, not a marketing snapshot.

@@ -1,6 +1,6 @@
 # Ortim Backlog — Canonical View
 
-> **Purpose.** Single source of truth for open work. `tespit.md` is the **append-only chronological discovery log**; this file is the **structured projection** for "what is open right now". When in doubt, this file wins for status queries; tespit.md wins for context/rationale.
+> **Purpose.** Single source of truth for open work. `tespit.md` is the **append-only chronological discovery log** — an internal, unpublished file kept under `_internal/notes/` (not in the public repo); this file is the **public structured projection** for "what is open right now". When in doubt, this file wins for status queries; tespit.md wins for context/rationale.
 >
 > **Last sync:** 2026-05-15 (post execution-stage proof-point on `proofpoint48` — Item 48 SHIPPED + empirical, Item 49 RETRACTED, M3.1 production-ready for happy-path planning + execution; G-1/G-2 added to DEFERRED watch; pytest 404, no regression)
 >

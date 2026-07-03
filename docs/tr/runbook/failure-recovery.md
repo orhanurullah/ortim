@@ -437,5 +437,5 @@ GitHub: `https://github.com/orhanurullah/ortim/issues`
 
 İlgili dokümanlar:
 - [Tutorial](../tutorial/getting-started.md) — sıfırdan başlangıç
-- [Architecture](../../Ortim_Architecture.md) — sistem nasıl çalışır
-- [Backlog](../backlog.md) — bilinen açık item'lar
+- [Architecture](../../../Ortim_Architecture.md) — sistem nasıl çalışır
+- [Backlog](../../backlog.md) — bilinen açık item'lar

@@ -661,7 +661,7 @@ ortim skill list              # mevcut skill'ler
 ortim skill show <name>       # bir skill'in içeriği
 ```
 
-Kendi skill'ini yazmak için: [`docs/skills/authoring-guide.md`](../../skills/authoring-guide.md)
+Kendi skill'ini yazmak için: [`docs/skills/authoring-guide.md`](../skills/authoring-guide.md)
 (skill anatomisi: frontmatter, tetikler, gövde; resolver semantiği).
 
 ---
@@ -696,7 +696,7 @@ ortim cloud logout
 > **Durum — free-tier / abonelik yok:** Politika boş döner → enforcement kapalı (yerel-degrade). Bu
 > tasarım gereğidir; abonelik sona erince de aynı şekilde degrade olur.
 
-Tam yük şekli + tehdit modeli: [`docs/cloud.md`](../../cloud.md).
+Tam yük şekli + tehdit modeli: [`docs/cloud.md`](../cloud.md).
 
 ---
 

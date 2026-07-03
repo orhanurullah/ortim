@@ -311,10 +311,10 @@ This is an early **preview** pointing at `cloud.ortim.dev`; access is invite-onl
 - **[Failure recovery runbook](docs/runbook/failure-recovery.md)** — what to do when a task lands in `AWAITING_HITL`, budget gate trips, schema migration fails, etc.
 - **[Cloud governance (preview)](docs/cloud.md)** — `ortim cloud` Observer layer: what syncs (redacted metadata only), offline-safety, org policy enforcement.
 - **[Architecture spec](Ortim_Architecture.md)** — full master specification (TR/EN mixed; English-only revision is in flight).
-- **[Golden paths](docs/golden-paths/)** — reference docs for each of the 12 tiers.
+- **[Golden paths](ortim/_assets/golden-paths/)** — reference docs for each of the 12 tiers (bundled with the package as runtime knowledge assets).
 - **[Skill authoring guide](docs/skills/authoring-guide.md)** — how to inject project-specific patterns into Worker/Reviewer prompts.
 - **[Changelog](CHANGELOG.md)**.
-- **Türkçe arşiv:** [`docs/tr/`](docs/tr/) — original Turkish-language tutorial and runbook (kept in sync best-effort; the English version is canonical).
+- **Türkçe:** [`docs/tr/kullanim-rehberi.md`](docs/tr/kullanim-rehberi.md) — comprehensive Turkish usage guide (install → recovery, every step + every case); [`docs/tr/`](docs/tr/) also holds the Turkish tutorial + runbook. The English version is canonical.
 
 ---
 
