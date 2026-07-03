@@ -167,8 +167,10 @@ def demo(
         for key in replay_keys:
             saved_replay_env[key] = os.environ.pop(key, None)
 
+        # Resolve to an absolute path — the env var travels into chain
+        # subprocesses that run with a different cwd (REPO_ROOT).
         replay_state_file = (
-            _globals.WORKSPACE_ROOT / f".replay-state-{project.id}.json"
+            _globals.WORKSPACE_ROOT.resolve() / f".replay-state-{project.id}.json"
         )
         os.environ[STATE_ENV] = str(replay_state_file)
         os.environ["LLM_PROVIDER"] = "replay"
