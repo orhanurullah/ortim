@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 starting with v0.8.0 (first public release).
 
+## [0.9.6] — 2026-07-03
+
+**Keyless onboarding: `pip install ortim && ortim demo` now completes with
+no API key**, plus a `Next:` hint after every core command so the pipeline
+is self-guiding.
+
+### Added
+- **Replay provider — keyless `ortim demo`.** With no API key configured,
+  the demo no longer aborts: it replays a bundled recording of a real
+  DeepSeek run of the exact same chain (brief → PRD → scope lock → G1 →
+  RFC → G2 → task DAG) and clearly badges the output as a
+  *recorded run — not a live model*. Every artifact (PRD.md, RFC.md,
+  task_dag.json, hash-chained audit log) is produced for real; only the
+  LLM responses are served from the recording, priced at $0 in `ortim
+  retro`. An explicitly requested provider (`--provider deepseek`) with a
+  missing key still hard-errors, a custom `--brief` without a key is
+  rejected (the recording only covers the default brief), and `--execute`
+  downgrades to planning-only with a warning.
+- **`ORTIM_REPLAY_RECORD=/path/out.jsonl`** captures any live run into a
+  replayable fixture; `ORTIM_REPLAY_FIXTURE` / `ORTIM_REPLAY_STATE`
+  select the fixture and persist the replay cursor across processes.
+  Internally the replay provider is a third `api_kind` next to
+  `anthropic` and `openai` — the same seam a future managed provider
+  will plug into.
+- **`Next: ortim <command>` hint.** `run`, `show`, `status`, and
+  `advance` now end with the single most useful next command for the
+  project's current state (full state → command map), so no tutorial
+  step leaves you at a dead end.
+
+### Fixed
+- **`ortim demo` workspace resolution on pip installs.** Chain
+  subprocesses run with `cwd=REPO_ROOT` (site-packages on a pip
+  install), so a relative `WORKSPACE_ROOT` of `./workspaces` could
+  resolve to a different directory than the parent's. The demo now
+  exports the parent's resolved absolute workspace root to the chain.
+- **Order-dependent test failures from `importlib.reload`.** The dynamic
+  provider tests reloaded `ortim.llm.providers`, breaking class identity
+  (`except UnknownProvider` stopped catching) for every module imported
+  earlier. Provider config is now merged in place with snapshot/restore.
+
 ## [0.9.5] — 2026-06-10
 
 **PyPI runtime fix + explicit app_class control + English-canonical CLI.**

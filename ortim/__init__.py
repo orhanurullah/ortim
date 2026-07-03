@@ -4,7 +4,7 @@
 
 from pathlib import Path as _Path
 
-__version__ = "0.9.5"
+__version__ = "0.9.6"
 
 # Path to the bundled markdown assets dir (`agents/`, `skills/`,
 # `principles/`, `glossary/`, `golden-paths/`). Resolves correctly for

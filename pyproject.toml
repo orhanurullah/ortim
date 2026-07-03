@@ -1,6 +1,6 @@
 [project]
 name = "ortim"
-version = "0.9.5"
+version = "0.9.6"
 description = "Disciplined multi-agent AI software factory: brief -> PRD -> RFC -> task DAG -> reviewed code, with human gates and a hash-chained audit trail"
 readme = "README.md"
 requires-python = ">=3.11"

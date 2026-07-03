@@ -8,9 +8,10 @@
 
 ```bash
 pip install ortim
+ortim demo   # no API key needed — watch the full brief → PRD → RFC → task-DAG chain
 ```
 
-Requires Python ≥ 3.11. After install, run `ortim config init` to pick a provider (DeepSeek / Anthropic / local Ollama) and store credentials — no `.env` setup needed.
+Requires Python ≥ 3.11. With no key configured, `ortim demo` replays a **recorded real run** of the pipeline (clearly badged as such), so you can see every artifact before creating any account or key. For live runs, `ortim config init` picks a provider (DeepSeek / Anthropic / local Ollama) and stores credentials — no `.env` setup needed.
 
 ---
 
@@ -31,6 +32,15 @@ Ortim treats AI coding as a **production-engineering problem**, not a prompting 
 ---
 
 ## Quick start
+
+Zero-setup first look — works **without any API key** (falls back to a
+recorded replay of a real run, and says so):
+
+```bash
+ortim demo
+```
+
+Then the real flow, on your own brief:
 
 ```bash
 # 1) Go to a project directory (greenfield or brownfield).
@@ -64,13 +74,7 @@ ortim retro                  # token + USD cost rollup
 ortim drift-check            # RFC ↔ DAG ↔ status integrity
 ```
 
-Every command discovers the workspace from `cwd` (project mode, 0.9+). Run them inside the project directory, or use `--project / -p <id>` from anywhere. `ortim ls` lists every known workspace.
-
-For a quick end-to-end walkthrough with no input:
-
-```bash
-ortim demo
-```
+Every command discovers the workspace from `cwd` (project mode, 0.9+). Run them inside the project directory, or use `--project / -p <id>` from anywhere. `ortim ls` lists every known workspace. Every step's output ends with a `Next: ortim <command>` hint, so you're never left guessing.
 
 → Full tutorial: **[docs/tutorial/getting-started.md](docs/tutorial/getting-started.md)** (~15 minutes from install to a finished project).
 
@@ -176,7 +180,7 @@ SECURITY_REVIEWER_PROVIDER=anthropic
 
 ```bash
 ortim run --provider ollama --model qwen2.5-coder:7b
-ortim demo --provider ollama          # try the demo with zero API keys
+ortim demo --provider ollama          # live demo on a local model, zero API keys
 ```
 
 Resolution order: `--provider` flag → shell / `.env` env var → `~/.ortim/config.toml` → hardcoded default.
@@ -186,7 +190,7 @@ Approximate costs on observed proof-point runs (TR brief, 6–8 tasks, 80 %+ fir
 - Hybrid (Architect + SecRev on Anthropic): **$0.05–0.10** planning, **$0.04–0.08** per task.
 - Ollama-only: **$0.00** (local; throughput depends on hardware).
 
-Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compatible endpoint.
+Supported providers: `anthropic`, `deepseek`, `ollama` (local), any OpenAI-compatible endpoint — plus `replay` (recorded runs; powers the keyless demo).
 
 ---
 
