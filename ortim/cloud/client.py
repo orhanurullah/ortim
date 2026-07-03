@@ -19,6 +19,14 @@ class CloudError(Exception):
     """Network failure or non-2xx response from the control plane."""
 
 
+def _cli_version() -> str:
+    try:
+        from ortim import __version__
+        return __version__
+    except Exception:
+        return "unknown"
+
+
 def _extract_cookie(headers: Any, name: str) -> str | None:
     """Pull a cookie value from response Set-Cookie headers."""
     try:
@@ -50,6 +58,9 @@ class CloudClient:
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Content-Type", "application/json")
         req.add_header("Accept", "application/json")
+        # Cloudflare's bot rules 403 (error 1010) the default
+        # `Python-urllib/x.y` browser signature; identify as the CLI.
+        req.add_header("User-Agent", f"ortim-cli/{_cli_version()}")
         if auth and self.token:
             req.add_header("Authorization", f"Bearer {self.token}")
         try:
