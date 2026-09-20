@@ -150,17 +150,27 @@ class BudgetTracker:
                     if in_tokens == 0 and out_tokens == 0:
                         continue
 
-                    # Dedup only when the row carries a strong identity
-                    # (timestamp + event). Real audit rows always have
-                    # both; synthetic test rows often have neither and
-                    # must not collapse into a single seen-key bucket.
-                    ts = entry.get("timestamp")
-                    ev = entry.get("event")
-                    if ts and ev:
-                        row_key = (ts, str(ev), entry.get("task_id"))
-                        if row_key in seen_rows:
-                            continue
-                        seen_rows.add(row_key)
+                    # Dedup exists to stop a row that legitimately appears
+                    # in BOTH the primary and global-fallback source (see
+                    # `_sources`) from being double-counted — it is not
+                    # meant to collapse two distinct same-second events
+                    # within a single file. (timestamp, event, task_id) is
+                    # too weak an identity for that: two unrelated calls
+                    # with no task_id and the same event name landing in
+                    # the same clock tick — routine on a coarser-resolution
+                    # CI runner — were colliding and silently dropping the
+                    # second row's tokens from the total. Real cross-file
+                    # duplicates carry a genuinely matching timestamp that
+                    # only recurs because it's the *same* record, so this
+                    # only needs to run when there's more than one source.
+                    if len(sources) > 1:
+                        ts = entry.get("timestamp")
+                        ev = entry.get("event")
+                        if ts and ev:
+                            row_key = (ts, str(ev), entry.get("task_id"))
+                            if row_key in seen_rows:
+                                continue
+                            seen_rows.add(row_key)
 
                     provider = str(entry.get("provider") or "anthropic").lower()
                     per_prov_in[provider] += in_tokens

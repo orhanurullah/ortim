@@ -155,11 +155,18 @@ def test_apply_scope_none_or_empty_is_noop() -> None:
     assert _apply_scope(cmd, "") is cmd
 
 
-def test_detect_runner_recognizes_resolved_paths() -> None:
-    # shutil.which resolves `pytest` to `C:\Python\Scripts\pytest.exe` on
-    # Windows; the detection logic must look at basename.stem.
-    assert _detect_runner(["C:\\Python\\Scripts\\pytest.exe", "-q"]) == "pytest"
+def test_detect_runner_recognizes_resolved_posix_paths() -> None:
     assert _detect_runner(["/usr/local/bin/npx", "vitest", "run"]) == "vitest"
+
+
+@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows path parsing")
+def test_detect_runner_recognizes_resolved_windows_paths() -> None:
+    # shutil.which resolves `pytest` to `C:\Python\Scripts\pytest.exe` on
+    # Windows; the detection logic must look at basename.stem. `pathlib.Path`
+    # only parses backslashes as separators on Windows itself — this
+    # scenario can't occur on POSIX (shutil.which never returns a
+    # backslash path there), so the assertion is Windows-only too.
+    assert _detect_runner(["C:\\Python\\Scripts\\pytest.exe", "-q"]) == "pytest"
 
 
 class _FakePopen:

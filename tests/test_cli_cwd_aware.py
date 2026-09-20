@@ -134,8 +134,14 @@ def test_inspect_no_arg_greenfield_says_not_brownfield(project_dir: Path) -> Non
 # ---------------- budget ----------------
 
 
-def _seed_audit_entry(audit_path: Path, project_id: str) -> None:
-    """Write a single audit row with token data so budget has something to sum."""
+def _seed_audit_entry(audit_path: Path, project_id: str, task_id: str = "T-001") -> None:
+    """Write a single audit row with token data so budget has something to sum.
+
+    Callers seeding more than one row must pass distinct `task_id`s — two
+    rows with the same (timestamp, event, task_id) are indistinguishable
+    from a genuine duplicate write, which BudgetTracker/aggregate are
+    allowed to collapse.
+    """
     import json as _json
 
     entry = {
@@ -144,7 +150,7 @@ def _seed_audit_entry(audit_path: Path, project_id: str) -> None:
         "event": "worker_output_ok",
         "category": "worker",
         "project_id": project_id,
-        "task_id": "T-001",
+        "task_id": task_id,
         "tokens": {"in": 1000, "out": 500},
         "provider": "deepseek",
         "model": "deepseek-chat",
@@ -205,8 +211,8 @@ def test_budget_matches_retro_for_same_workspace(project_dir: Path) -> None:
     loc = resolve_workspace(arg=None)
     project = ProjectStore(loc).load()
     audit_path = loc.metadata_dir / "audit.jsonl"
-    _seed_audit_entry(audit_path, project.id)
-    _seed_audit_entry(audit_path, project.id)  # 2 entries → 3,000 total tokens
+    _seed_audit_entry(audit_path, project.id, task_id="T-001")
+    _seed_audit_entry(audit_path, project.id, task_id="T-002")  # 2 entries → 3,000 total tokens
 
     runner = CliRunner()
     budget_result = runner.invoke(app, ["budget"])
