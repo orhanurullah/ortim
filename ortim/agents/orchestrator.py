@@ -18,7 +18,6 @@ from ortim.memory import MemoryLoader
 from ortim.orchestrator import CyclicDAG, MissingDependency, TaskDAG
 from ortim.scope import ScopeManifest
 
-
 # Item 42 — every emitted task.module_scope MUST match a module declared in
 # RFC §7 Module Breakdown. Proof-point E2E (workspace `ed9f6074f1b8`,
 # 2026-05-14) showed the Orchestrator collapsing RFC §7's separate `db` and

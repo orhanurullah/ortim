@@ -13,6 +13,11 @@ from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from ortim.executor import (
+    git_ops,  # noqa: E402
+    test_runner,  # noqa: E402
+)
+from ortim.executor.reviewer import ReviewVerdict  # noqa: E402
 from ortim.executor.sandbox import (  # noqa: E402
     SandboxViolation,
     check_extension,
@@ -24,11 +29,7 @@ from ortim.executor.status import (  # noqa: E402
     TaskStatus,
     TaskStatusFile,
 )
-from ortim.executor.reviewer import ReviewVerdict  # noqa: E402
 from ortim.executor.worker import FileChange, WorkerOutput  # noqa: E402
-from ortim.executor import git_ops  # noqa: E402
-from ortim.executor import test_runner  # noqa: E402
-
 
 # ---------- normalize_relative ----------
 
@@ -757,8 +758,6 @@ if __name__ == "__main__":
         test_worker_output_parses_minimal,
         test_worker_output_default_operation_is_create,
         test_worker_output_rejects_invalid_operation,
-        test_review_verdict_minimal,
-        test_review_verdict_full,
         test_status_file_load_or_init_creates_empty,
         test_status_file_get_or_create_idempotent,
         test_status_file_save_then_reload,

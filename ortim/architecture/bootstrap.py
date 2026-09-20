@@ -97,7 +97,7 @@ def _t0_web_go_mod(project_name: str) -> str:
 
 
 def _resolve_t0_language(
-    locked_stack: "LockedStack | None", workspace: Path
+    locked_stack: LockedStack | None, workspace: Path
 ) -> str | None:
     """Pick the T0/web language from (locked_stack first, RFC scan
     fallback). Returns a normalized token: 'python', 'go', 'bash', or
@@ -142,7 +142,7 @@ _T2_WEB_TSCONFIG = {
 }
 
 
-def _tsconfig_for_stack(locked_stack: "LockedStack | None") -> dict:
+def _tsconfig_for_stack(locked_stack: LockedStack | None) -> dict:
     """Build the tsconfig with stack-aware compilerOptions. When the
     locked stack includes React, `jsx` and `lib` get set so the Worker's
     .tsx files compile without manual intervention — closing one of the
@@ -315,7 +315,7 @@ import '@testing-library/jest-dom';
 """
 
 
-def _is_react_stack(locked_stack: "LockedStack | None") -> bool:
+def _is_react_stack(locked_stack: LockedStack | None) -> bool:
     """Return True when the locked stack's primary_framework normalizes to a
     React-based entry in `_FRAMEWORK_PACKAGES`. Used to gate the
     vite.config.ts + setupTests.ts writers."""
@@ -326,7 +326,7 @@ def _is_react_stack(locked_stack: "LockedStack | None") -> bool:
     return "react" in pkgs
 
 
-def _is_browser_framework_stack(locked_stack: "LockedStack | None") -> bool:
+def _is_browser_framework_stack(locked_stack: LockedStack | None) -> bool:
     """Return True when the locked stack's primary_framework resolves to a
     browser-side framework (React, Vue, Vite, Next.js).
 
@@ -386,7 +386,7 @@ _NPM_TYPES_PEERS: dict[str, str] = {
 
 def _t2_web_package_json(
     name: str,
-    locked_stack: "LockedStack | None" = None,
+    locked_stack: LockedStack | None = None,
 ) -> dict:
     """Build the T2/web package.json. When a LockedStack is provided, the
     stack's `key_libraries` are resolved through `_NPM_DEP_REGISTRY` and

@@ -34,9 +34,18 @@ cloud. The cloud access token is stored in `~/.ortim/cloud.toml`
 (chmod 600 on POSIX).
 
 **Execution sandbox.** Each generated task carries a `module_scope`; the
-executor rejects writes outside it. Generated code runs your local test
-suite and hooks — treat a workspace like any codebase you'd run `npm
-install` in: review before executing beyond the sandbox.
+executor rejects *writes* outside it (`executor/sandbox.py`). *Running*
+the test suite is a separate, narrower guarantee: the configured test
+command (`ORTIM_TEST_CMD`, e.g. `pytest`, `npx vitest`) executes as a
+normal host subprocess, with a timeout and full process-tree cleanup if
+it's hit — killing the tree (not just the direct child) closes the gap
+where a watch-mode wrapper or launcher shim outlived a timed-out run.
+What this does **not** give you: filesystem or network isolation. A test
+command can still read/write anywhere your user account can and reach the
+network, exactly like running that command yourself. Treat a workspace
+like any codebase you'd run `npm install` in — review before running
+tests on code you haven't read. Full isolation (an opt-in Docker/nsjail
+exec path) is a deliberate, tracked next step, not shipped yet.
 
 **Audit chain: evidence, not prevention.** The hash-chained audit log
 (`.ortim/audit.jsonl`) is tamper-*evident*, not tamper-*proof*. An

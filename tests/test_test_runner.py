@@ -13,8 +13,8 @@ runs `vitest` even if the user never exports the env var.
 
 from __future__ import annotations
 
-import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -162,16 +162,26 @@ def test_detect_runner_recognizes_resolved_paths() -> None:
     assert _detect_runner(["/usr/local/bin/npx", "vitest", "run"]) == "vitest"
 
 
-def _fake_completed(returncode: int, stdout: str = "", stderr: str = ""):
-    """Build a subprocess.CompletedProcess stand-in for monkeypatch."""
+class _FakePopen:
+    """Stand-in for `subprocess.Popen` — `run_tests` now drives the child
+    itself (Popen + communicate) instead of the one-shot `subprocess.run`,
+    so process-tree cleanup on timeout works (see `_kill_tree`)."""
 
-    class _Stub:
-        def __init__(self) -> None:
-            self.returncode = returncode
-            self.stdout = stdout
-            self.stderr = stderr
+    def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self._stdout = stdout
+        self._stderr = stderr
+        self.pid = 4242
 
-    return _Stub()
+    def communicate(self, timeout: float | None = None):  # type: ignore[no-untyped-def]
+        return self._stdout, self._stderr
+
+
+def _fake_popen_factory(returncode: int, stdout: str = "", stderr: str = ""):
+    def _factory(cmd, **kw):  # type: ignore[no-untyped-def]
+        return _FakePopen(returncode, stdout, stderr)
+
+    return _factory
 
 
 def test_run_tests_normalizes_pytest_exit_5_when_scoped(
@@ -181,9 +191,7 @@ def test_run_tests_normalizes_pytest_exit_5_when_scoped(
     that just means 'this module has no tests' — neutral, not failure."""
     monkeypatch.setenv("ORTIM_TEST_CMD", "pytest -q")
     monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *a, **kw: _fake_completed(5, "no tests ran in 0.01s", ""),
+        subprocess, "Popen", _fake_popen_factory(5, "no tests ran in 0.01s", "")
     )
     result = run_tests(tmp_path, scope="empty_module")
     assert result.exit_code == 0
@@ -197,11 +205,7 @@ def test_run_tests_does_not_normalize_pytest_exit_5_when_unscoped(
     """Workspace-wide pytest returning 5 means the project has zero tests
     — genuinely suspicious. Don't normalize that away."""
     monkeypatch.setenv("ORTIM_TEST_CMD", "pytest -q")
-    monkeypatch.setattr(
-        subprocess,
-        "run",
-        lambda *a, **kw: _fake_completed(5, "no tests ran", ""),
-    )
+    monkeypatch.setattr(subprocess, "Popen", _fake_popen_factory(5, "no tests ran", ""))
     result = run_tests(tmp_path, scope=None)
     assert result.exit_code == 5
     assert not result.passed
@@ -210,17 +214,104 @@ def test_run_tests_does_not_normalize_pytest_exit_5_when_unscoped(
 def test_run_tests_passes_scoped_cmd_to_subprocess(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """End-to-end shape check: the cmd that subprocess.run sees actually
-    contains the scope token. This is the integration glue between
-    _apply_scope and run_tests."""
+    """End-to-end shape check: the cmd that Popen sees actually contains the
+    scope token. This is the integration glue between _apply_scope and
+    run_tests."""
     monkeypatch.setenv("ORTIM_TEST_CMD", "npx vitest run")
     captured: dict[str, list[str]] = {}
 
     def _spy(cmd, **kw):  # type: ignore[no-untyped-def]
         captured["cmd"] = list(cmd)
-        return _fake_completed(0)
+        return _FakePopen(0)
 
-    monkeypatch.setattr(subprocess, "run", _spy)
+    monkeypatch.setattr(subprocess, "Popen", _spy)
     run_tests(tmp_path, scope="task-service")
     assert "task-service" in captured["cmd"]
     assert "--passWithNoTests" in captured["cmd"]
+
+
+# ---------------------------------------------------------------------------
+# Timeout tree-kill — Faz-0 execution-sandbox hardening. `run_tests` must
+# kill the whole process tree it spawned, not just the direct child, or a
+# grandchild (watch-mode wrapper, `npx` launcher shim) survives as an
+# orphan after the reported timeout. Uses real subprocesses — this is the
+# one behavior a mock can't prove.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX process-group test")
+def test_run_tests_kills_grandchild_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "grandchild_alive.txt"
+    # Parent immediately backgrounds a grandchild that ticks a counter file
+    # forever, then itself sleeps well past our timeout — mirrors a
+    # watch-mode test runner that spawns a long-lived worker.
+    script = (
+        f"(while true; do date +%s%N >> {marker!s}; sleep 0.05; done & "
+        f"disown; sleep 30)"
+    )
+    monkeypatch.setenv("ORTIM_TEST_CMD", f"sh -c '{script}'")
+
+    result = run_tests(tmp_path, timeout=0.6)
+    assert result.exit_code == 124
+
+    # Give the grandchild a moment to have been reaped, then confirm the
+    # counter file stopped growing — proof it was actually killed, not
+    # just detached from the (already-dead) parent.
+    import time
+
+    assert marker.exists(), "grandchild never started"
+    size_after_kill = marker.stat().st_size
+    time.sleep(0.5)
+    assert marker.stat().st_size == size_after_kill, (
+        "grandchild kept writing after run_tests() timed out — "
+        "process tree was not fully killed"
+    )
+
+
+@pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows taskkill /T test")
+def test_run_tests_kills_grandchild_on_timeout_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same guarantee as the POSIX test above, via `taskkill /F /T`.
+
+    Note: this covers the realistic shape (a child that itself spawns a
+    normal subprocess, e.g. `npx` -> `node` -> worker). A grandchild
+    explicitly detached with `start /b` can still escape `taskkill /T` —
+    a known Windows quirk, not something this fix claims to close;
+    ortim's actual test-runner commands (pytest/vitest/flutter/cargo/go)
+    don't self-detach like that.
+    """
+    import time
+
+    marker = tmp_path / "grandchild_alive.txt"
+    worker_script = tmp_path / "_worker.py"
+    worker_script.write_text(
+        "import time\n"
+        f"f = open(r'{marker}', 'a')\n"
+        "while True:\n"
+        "    f.write('x')\n"
+        "    f.flush()\n"
+        "    time.sleep(0.05)\n",
+        encoding="utf-8",
+    )
+    spawner_script = tmp_path / "_spawner.py"
+    spawner_script.write_text(
+        "import subprocess, sys\n"
+        f"gc = subprocess.Popen([sys.executable, r'{worker_script}'])\n"
+        "gc.wait()\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ORTIM_TEST_CMD", f'"{sys.executable}" "{spawner_script}"')
+
+    result = run_tests(tmp_path, timeout=0.8)
+    assert result.exit_code == 124
+
+    assert marker.exists(), "grandchild never started"
+    size_after_kill = marker.stat().st_size
+    time.sleep(0.6)
+    assert marker.stat().st_size == size_after_kill, (
+        "grandchild kept writing after run_tests() timed out — "
+        "process tree was not fully killed"
+    )

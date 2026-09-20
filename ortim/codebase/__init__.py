@@ -13,12 +13,14 @@ frameworks, public symbols), and caches the result for incremental rescans.
 from ortim.codebase.baseline import (
     RegressionReport,
     TestBaseline,
-    capture as capture_baseline,
     check_regression,
     detect_test_cmd,
     load_baseline,
     parse_test_count,
     write_baseline,
+)
+from ortim.codebase.baseline import (
+    capture as capture_baseline,
 )
 from ortim.codebase.exports import ExportSignature, extract_exports
 from ortim.codebase.prior_tasks import (

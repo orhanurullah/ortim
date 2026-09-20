@@ -17,20 +17,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from dataclasses import dataclass, field  # noqa: E402
 
-from ortim.architecture import GoldenPathInputs, Tier, select_tier  # noqa: E402
+from ortim.architecture import GoldenPathInputs, select_tier  # noqa: E402
 from ortim.audit import AuditLogger  # noqa: E402
 from ortim.babel import StructuredIntent  # noqa: E402
 from ortim.llm.client import LLMResponse  # noqa: E402
 from ortim.memory import MemoryLoader  # noqa: E402
-
 
 # ---------- Schema layer ----------------------------------------------------
 

@@ -147,10 +147,11 @@ def _parse_baseline_modules_permissive(rfc_text: str) -> set[str]:
             continue
         first = parts[0]
         # Accept backticked OR bare name in column 1.
-        if first.startswith("`") and "`" in first[1:]:
-            name = first.split("`")[1]
-        else:
-            name = first
+        name = (
+            first.split("`")[1]
+            if first.startswith("`") and "`" in first[1:]
+            else first
+        )
         name = re.sub(r"\s*\(new\)\s*$", "", name).strip()
         # Header row words to skip.
         if name.lower() in {"module", "name", "section", "modules"}:

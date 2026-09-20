@@ -119,7 +119,7 @@ class ExternalGateEvidence:
         return bool(self.matches)
 
 
-def detect_external_calls(worker_output: "WorkerOutput") -> ExternalGateEvidence:
+def detect_external_calls(worker_output: WorkerOutput) -> ExternalGateEvidence:
     """Scan emitted file content for external SDK imports or non-local URLs."""
     matches: list[tuple[str, str]] = []
     for f in worker_output.files:

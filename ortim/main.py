@@ -12,6 +12,7 @@ from `ortim.main`.
 from __future__ import annotations
 
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 import typer
@@ -25,10 +26,8 @@ from rich.console import Console
 for _stream in (sys.stdout, sys.stderr):
     reconfigure = getattr(_stream, "reconfigure", None)
     if reconfigure is not None:
-        try:
+        with suppress(OSError, ValueError):
             reconfigure(encoding="utf-8", errors="replace")
-        except (OSError, ValueError):
-            pass
 
 # Walk up from the user's CWD, not from main.py's install location.
 # PyPI installs put main.py in site-packages; walking up from there never
@@ -40,8 +39,8 @@ load_dotenv(find_dotenv(usecwd=True))
 # config store only populates env vars that are currently unset, so
 # shell/.env values always win. This lets PyPI users configure a
 # provider once without needing a `.env` in every project directory.
-from ortim.config import apply_to_env as _apply_user_config_to_env
-from ortim.config import load as _load_user_config
+from ortim.config import apply_to_env as _apply_user_config_to_env  # noqa: E402
+from ortim.config import load as _load_user_config  # noqa: E402
 
 _user_cfg = _load_user_config()
 if _user_cfg is not None:

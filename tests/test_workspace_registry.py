@@ -8,16 +8,13 @@ behavior, and prune_missing self-healing.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from ortim.workspace.registry import (
     Registry,
-    WorkspaceEntry,
     register_workspace,
-    registry_path,
     scan_pool_workspaces,
     touch_workspace,
 )

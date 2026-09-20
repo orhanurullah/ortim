@@ -17,6 +17,7 @@ import os
 import stat
 import sys
 import tomllib
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,10 +81,8 @@ def save(cfg: CloudConfig, path: Path | None = None) -> Path:
         lines.append(f'refresh_token = "{_q(cfg.refresh_token)}"')
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
     if os.name == "posix":
-        try:
+        with suppress(OSError):
             os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
-        except OSError:
-            pass
     return target
 
 

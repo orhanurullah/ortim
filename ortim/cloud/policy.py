@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -55,7 +55,7 @@ def save_policy_cache(metadata_dir: Path, org_id: str, policy: dict) -> Path:
         "mandatory_gates": list(policy.get("mandatoryGates") or []),
         "allowed_providers": list(policy.get("allowedProviders") or []),
         "budget_cap_usd": cap,
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "fetched_at": datetime.now(UTC).isoformat(),
     }
     path = policy_cache_path(metadata_dir)
     path.parent.mkdir(parents=True, exist_ok=True)

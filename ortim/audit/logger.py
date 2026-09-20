@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +112,7 @@ class AuditLogger:
         # `[PHONE]T13:00:53...` strings that break any downstream consumer
         # parsing wall time (e.g. `ortim retro` latency rollup). Keep the
         # timestamp out of the redaction pass; redact the rest of the body.
-        timestamp = datetime.now(timezone.utc).isoformat()
+        timestamp = datetime.now(UTC).isoformat()
         body: dict[str, Any] = {
             "event": event,
             "category": category,

@@ -36,7 +36,7 @@ import time
 from dataclasses import dataclass
 
 import httpx
-from anthropic import APIConnectionError, APIStatusError, Anthropic
+from anthropic import Anthropic, APIConnectionError, APIStatusError
 
 from ortim.env import env_get
 from ortim.llm import replay
@@ -89,9 +89,7 @@ def _is_retryable(exc: Exception) -> bool:
     # DeepSeek sometimes returns "Service is too busy" inside a 200-shaped
     # error; the anthropic SDK raises a generic APIError for those.
     msg = str(exc).lower()
-    if "overloaded" in msg or "too busy" in msg or "rate limit" in msg:
-        return True
-    return False
+    return "overloaded" in msg or "too busy" in msg or "rate limit" in msg
 
 
 class LLMClient:

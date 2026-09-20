@@ -22,7 +22,6 @@ from ortim.extend import (  # noqa: E402
     section_cycles_in,
 )
 
-
 # ---- section_cycles_in ----
 
 

@@ -92,7 +92,7 @@ def test_external_import_boto3_triggers() -> None:
     )
     ev = detect_external_calls(out)
     assert ev.triggered
-    assert any("src/x.py" == fp for fp, _ in ev.matches)
+    assert any(fp == "src/x.py" for fp, _ in ev.matches)
 
 
 def test_external_url_triggers() -> None:

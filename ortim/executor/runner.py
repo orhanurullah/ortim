@@ -31,13 +31,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ortim.audit import AuditLogger
 from ortim.architecture import LockedStack
+from ortim.audit import AuditLogger
 from ortim.codebase import (
     CodebaseSummary,
     collect_prior_outputs,
     read_related,
 )
+from ortim.codebase.prior_tasks import primary_scope
 from ortim.executor.git_ops import (
     GitOperationFailed,
     abandon_task_branch,
@@ -49,13 +50,12 @@ from ortim.executor.git_ops import (
     remove_worktree,
     start_task_branch,
 )
-from ortim.executor.perf_reviewer import PerfReviewerAgent, PerfVerdict
+from ortim.executor.perf_reviewer import PerfReviewerAgent
 from ortim.executor.reviewer import CodeReviewerAgent, ReviewVerdict
 from ortim.executor.sandbox import normalize_relative, resolve_in_workspace
 from ortim.executor.security_reviewer import SecurityReviewerAgent, SecurityVerdict
 from ortim.executor.status import TaskStatus, TaskStatusFile
 from ortim.executor.test_reviewer import TestReviewerAgent, TestVerdict
-from ortim.codebase.prior_tasks import primary_scope
 from ortim.executor.test_runner import TestResult, run_tests
 from ortim.executor.worker import (
     WorkerAgent,
@@ -63,11 +63,11 @@ from ortim.executor.worker import (
     WorkerOutput,
     WorkerSkillNotConsulted,
 )
-from ortim.hooks import HookResult, run_hook
+from ortim.hooks import run_hook
 from ortim.llm import LLMClient
 from ortim.memory import MemoryLoader
 from ortim.orchestrator import TaskDAG, TaskSpec
-from ortim.skills import Skill, load_all_skills, resolve_for_task
+from ortim.skills import Skill, resolve_for_task
 
 
 @dataclass

@@ -1,0 +1,87 @@
+name: Release
+
+# Faz-0 publish otomasyonu (docs/portfoy-degerlendirme.md §4.8). v0.9.6 was
+# published by hand (`twine upload` from a local machine) — no test gate,
+# no reproducible build, an implicit trust in whatever was on disk that day.
+#
+# Trigger: publishing a GitHub Release (tag `vX.Y.Z`, matching pyproject's
+# `version`). Re-tag-push alone does NOT publish — you still have to draft
+# and publish the Release, which is the deliberate "yes, ship this" gate.
+#
+# One-time setup this workflow depends on (do once, in the browser):
+#   1. GitHub repo → Settings → Environments → new environment `pypi`.
+#      (Optionally add required reviewers for extra ceremony on publish.)
+#   2. https://pypi.org/manage/project/ortim/settings/publishing/ → add a
+#      trusted publisher: this repo, workflow file `release.yml`,
+#      environment `pypi`. No PyPI API token is stored anywhere — publish
+#      auth is OIDC, scoped to exactly this workflow+environment.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Re-run the gate here too: a tag can exist without `main`'s CI ever
+    # having seen that exact commit, and a bad PyPI upload can't be
+    # un-published — only yanked, after the fact, after someone installed it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (editable, with dev extras)
+        run: python -m pip install -e ".[dev]"
+
+      - name: ruff
+        run: python -m ruff check .
+
+      - name: pytest
+        run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install build
+          python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ortim/
+    permissions:
+      # OIDC trusted publishing — PyPI verifies this run's identity token
+      # against the trusted-publisher config on the project; no long-lived
+      # API token is stored as a repo secret.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

@@ -75,7 +75,7 @@ def _parse_rfc_key_libraries(rfc_text: str) -> list[str] | None:
 
 
 def _find_phantom_libraries(
-    rfc_text: str, locked_stack: "LockedStack"
+    rfc_text: str, locked_stack: LockedStack
 ) -> list[str]:
     """Return libraries listed in RFC §4 but NOT in locked_stack.key_libraries.
 

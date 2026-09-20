@@ -121,7 +121,7 @@ class ProjectStore:
             return None
 
     @classmethod
-    def for_new_project_mode(cls, path: Path) -> "ProjectStore":
+    def for_new_project_mode(cls, path: Path) -> ProjectStore:
         """Construct a store anchored at `path` for a fresh project-mode workspace.
 
         Used by `ortim init` before any `.ortim/state.json` exists. The caller

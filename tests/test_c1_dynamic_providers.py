@@ -154,6 +154,7 @@ def test_setup_local_idempotent(tmp_path, monkeypatch, _pristine_providers) -> N
     monkeypatch.setenv("ORTIM_CONFIG", str(cfg_path))
 
     from typer.testing import CliRunner
+
     from ortim.config.cli import config_app
 
     runner = CliRunner()
@@ -183,6 +184,7 @@ def test_setup_local_ollama_absent_exit_1(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("ORTIM_CONFIG", str(cfg_path))
 
     from typer.testing import CliRunner
+
     from ortim.config.cli import config_app
 
     runner = CliRunner()

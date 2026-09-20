@@ -130,7 +130,7 @@ def init() -> None:
             console.print("  → [dim]key unchanged[/dim]\n")
 
     written = save(cfg)
-    console.print(f"[green]Saved.[/green] Run [cyan]ortim config show[/cyan] to verify.\n")
+    console.print("[green]Saved.[/green] Run [cyan]ortim config show[/cyan] to verify.\n")
     console.print(f"[dim]Path: {written}[/dim]")
 
 
@@ -322,7 +322,7 @@ def setup_local(
     except Exception:
         console.print("[red]Error: Could not connect to local Ollama server on http://localhost:11434[/red]")
         console.print("[red]Please download and install Ollama from https://ollama.com/download and ensure the server is running.[/red]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
     finally:
         conn.close()
 

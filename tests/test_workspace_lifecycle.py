@@ -9,8 +9,7 @@ test_cli_cwd_aware.py.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -51,7 +50,7 @@ def _make_project_workspace(
     if aged_days:
         # Use created_at to drive _last_active when history is empty
         old_ts = (
-            datetime.now(timezone.utc) - timedelta(days=aged_days)
+            datetime.now(UTC) - timedelta(days=aged_days)
         ).isoformat()
         project = Project(
             name=name, initial_brief_tr="x", created_at=old_ts
@@ -193,7 +192,7 @@ def test_delete_pool_mode_removes_full_directory(tmp_path: Path) -> None:
 
     # Back-date to make eligible
     project.created_at = (
-        datetime.now(timezone.utc) - timedelta(days=60)
+        datetime.now(UTC) - timedelta(days=60)
     ).isoformat()
     store.save(project)
 
@@ -234,7 +233,7 @@ def test_doctor_reports_aged_archive(tmp_path: Path) -> None:
     _, _, store, project = _make_project_workspace(tmp_path, "old-arch")
     # Archive with an ancient timestamp
     project.archived_at = (
-        datetime.now(timezone.utc) - timedelta(days=100)
+        datetime.now(UTC) - timedelta(days=100)
     ).isoformat()
     store.save(project)
     findings = doctor_scan()

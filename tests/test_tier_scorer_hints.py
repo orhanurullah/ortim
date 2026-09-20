@@ -32,7 +32,6 @@ from ortim.architecture.golden_paths import (  # noqa: E402
     select_tier,
 )
 
-
 # ---------- helper signal classifier ----------------------------------------
 
 

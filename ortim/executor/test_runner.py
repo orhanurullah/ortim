@@ -22,14 +22,18 @@ after one minor release.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shlex
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from ortim.env import env_get
+
+_IS_WINDOWS = sys.platform.startswith("win")
 
 
 def _resolve_binary(name: str) -> str:
@@ -208,26 +212,24 @@ def run_tests(
     )
 
     try:
-        proc = subprocess.run(
-            scoped_cmd,
-            cwd=str(workspace),
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-        )
+        child = _spawn_grouped(scoped_cmd, workspace)
     except FileNotFoundError:
         return TestResult(effective_plan, f"runner '{scoped_cmd[0]}' not on PATH", 127, "", "")
-    except subprocess.TimeoutExpired as e:
-        return TestResult(
-            effective_plan, None, 124, _tail(e.stdout or "", 4000), f"timeout after {timeout}s"
-        )
 
-    exit_code = proc.returncode
-    stdout_tail = _tail(proc.stdout, 4000)
-    stderr_tail = _tail(proc.stderr, 4000)
+    try:
+        stdout, stderr = child.communicate(timeout=timeout)
+        exit_code = child.returncode
+    except subprocess.TimeoutExpired:
+        # Kill the whole tree, not just `child` — see _kill_tree docstring.
+        _kill_tree(child.pid)
+        # Drain whatever the (now-dead) child already wrote so the pipes
+        # don't block us, then give up on this call rather than retry.
+        with contextlib.suppress(Exception):
+            child.communicate(timeout=5)
+        return TestResult(effective_plan, None, 124, "", f"timeout after {timeout}s")
+
+    stdout_tail = _tail(stdout, 4000)
+    stderr_tail = _tail(stderr, 4000)
 
     # pytest exits 5 when no tests were collected. When we narrowed pytest
     # to a per-task scope (39b), the absence of tests in that module is
@@ -246,6 +248,69 @@ def run_tests(
         stdout_tail=stdout_tail,
         stderr_tail=stderr_tail,
     )
+
+
+def _spawn_grouped(cmd: list[str], workspace: Path) -> subprocess.Popen[str]:
+    """`Popen` the test command as its own process group/session leader.
+
+    Without this, killing the immediate child on timeout leaves anything
+    *it* spawned (a watch-mode wrapper, an `npx` launcher shim, a `&&`
+    chain) running as an orphan — `subprocess.run(..., timeout=T)` only
+    ever kills the one PID it started. Written as two full calls (not one
+    call assembling kwargs into a dict) because `creationflags` and
+    `start_new_session` are different types on Popen's overloaded
+    signature; a merged, generically-typed kwargs dict doesn't type-check.
+    """
+    if sys.platform.startswith("win"):
+        return subprocess.Popen(
+            cmd,
+            cwd=str(workspace),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+    return subprocess.Popen(
+        cmd,
+        cwd=str(workspace),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        start_new_session=True,
+    )
+
+
+def _kill_tree(pid: int) -> None:
+    """Best-effort: kill `pid` and every process it spawned.
+
+    POSIX: `start_new_session=True` made `pid` a process group leader, so
+    its pgid equals its pid; `killpg` reaches the whole group.
+    Windows: `taskkill /T` walks the process tree rooted at `pid`.
+    Either can legitimately fail if the tree already exited on its own
+    between the timeout firing and this call — that's not an error.
+    """
+    # Written as a literal `sys.platform` check (not the `_IS_WINDOWS`
+    # module constant) so mypy's platform-check narrowing excludes the
+    # POSIX-only `os.killpg`/`signal.SIGKILL` branch when type-checked on
+    # Windows, and excludes nothing meaningful when type-checked on POSIX.
+    if sys.platform.startswith("win"):
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
+    import signal
+
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(os.getpgid(pid), signal.SIGKILL)
 
 
 def _tail(s: str | bytes, n: int) -> str:

@@ -19,7 +19,6 @@ What we do NOT test (deferred to enterprise/):
 
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 from pathlib import Path

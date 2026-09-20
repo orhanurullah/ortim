@@ -3,24 +3,25 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
 from __future__ import annotations
-import os
-import sys
+
 from pathlib import Path
+
 import typer
-from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
+
 from ortim.cli import _globals
 from ortim.cli._globals import (
-    console,
-    _apply_invocation_overrides, _block_if_archived,
-    _ensure_workspace_root, _load_codebase_summary, _print_next_action,
+    _apply_invocation_overrides,
+    _block_if_archived,
+    _load_codebase_summary,
+    _print_next_action,
     _resolve_project,
+    console,
 )
-from ortim.env import env_get
-from ortim.orchestrator import InvalidTransition, Project, ProjectState
-
 from ortim.cli.execution import _render_task_md
+from ortim.env import env_get
+from ortim.orchestrator import InvalidTransition, ProjectState
 
 # Semantic verb aliases for HITL approvals. Each alias resolves to a real
 # ProjectState and emits a distinct audit event so the gate log captures
@@ -68,14 +69,14 @@ def advance(
             console.print(f"[red]Unknown state or alias '{target}'.[/red]")
             console.print(f"States: {valid_states}")
             console.print(f"Aliases: {valid_aliases}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         audit_event = None
 
     try:
         project.transition(target_state, actor="cli-manual", note=note)
     except InvalidTransition as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     store.save(project)
     if audit_event:
@@ -216,7 +217,7 @@ def run(
             llm = client_for("babel")
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         babel = BabelLayer(llm, memory, audit)
         if project.state == ProjectState.INTAKE:
             project.transition(ProjectState.BABEL_PROCESSING, actor="babel-layer")
@@ -295,7 +296,7 @@ def run(
             analyst_llm = client_for("analyst")
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         analyst = AnalystAgent(analyst_llm, memory, audit)
 
         console.print("[cyan]Analyst:[/cyan] drafting PRD...")
@@ -331,7 +332,7 @@ def run(
         )
         project.save(_globals.WORKSPACE_ROOT)
         console.print(
-            f"\n[yellow]Next:[/yellow] assign a phase to each feature, then proceed to G1:"
+            "\n[yellow]Next:[/yellow] assign a phase to each feature, then proceed to G1:"
         )
         console.print(
             f"  ortim scope {project.id}            "
@@ -357,7 +358,7 @@ def run(
             architect_llm = client_for("architect")
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         architect = ArchitectAgent(architect_llm, memory, audit)
 
         if project.state == ProjectState.PRD_APPROVED:
@@ -546,7 +547,7 @@ def run(
         )
         project.save(_globals.WORKSPACE_ROOT)
         console.print(
-            f"\n[yellow]HITL Gate G2:[/yellow] review the RFC; to approve, run:"
+            "\n[yellow]HITL Gate G2:[/yellow] review the RFC; to approve, run:"
         )
         console.print(
             f"  ortim advance {project.id} rfc_approved --note 'reviewed'"
@@ -578,7 +579,7 @@ def run(
             orchestrator_llm = client_for("orchestrator")
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         orchestrator_agent = OrchestratorAgent(orchestrator_llm, memory, audit)
         console.print("[cyan]Orchestrator:[/cyan] generating task DAG (with retry on validation failure)...")
         # Faz 1.1 — feed scope into Orchestrator so each TaskSpec carries
@@ -600,7 +601,7 @@ def run(
                 ProjectState.FAILED, actor="orchestrator", note=str(e)[:200]
             )
             project.save(_globals.WORKSPACE_ROOT)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
         # Faz 1.5 — tag tasks with sensitive categories (auth/pii/payment).
         # The runner consults this list after reviewers approve and gates
@@ -922,10 +923,7 @@ def show(
     elif requested == "scope":
         from ortim.scope import load_scope, scope_path
 
-        if not scope_path(workspace).exists():
-            md = None
-        else:
-            md = load_scope(workspace).to_markdown()
+        md = None if not scope_path(workspace).exists() else load_scope(workspace).to_markdown()
     else:
         console.print(f"[red]Unknown artifact '{artifact}'[/red]")
         raise typer.Exit(1)
@@ -947,12 +945,8 @@ def lock(
     and generate the next state's first draft (if any)."""
     import difflib
 
-    from rich.panel import Panel
-
     from ortim.dialog import (
         load_current_artifact,
-        load_intent_md,
-        load_locked_stack,
         load_prev_snapshot,
     )
 
@@ -1515,7 +1509,7 @@ def extend_cmd(
         extender_llm = client_for("analyst")  # ExtenderAgent role
     except RuntimeError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     try:
         cycle, blocked = _initiate_extend_prd(
@@ -1529,10 +1523,10 @@ def extend_cmd(
         )
     except FileNotFoundError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except InvalidTransition as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     if blocked is not None:
         console.print(
@@ -1735,7 +1729,7 @@ def scope(
                 new_phase = int(phase_str.strip())
             except ValueError:
                 console.print(f"[red]Phase must be int, got '{phase_str}'.[/red]")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
             substr_l = substr.strip().lower()
             matched = 0
             for f in manifest.features:
@@ -1776,7 +1770,7 @@ def scope(
             f.phase = new_phase
             f.priority = "must" if new_phase == 1 else "later"
         save_scope(workspace, manifest)
-        console.print(f"\n[green]scope.json saved.[/green]")
+        console.print("\n[green]scope.json saved.[/green]")
         # Re-render so user sees the final assignments.
         table2 = Table(title="Updated scope")
         table2.add_column("Phase", style="cyan", width=5)

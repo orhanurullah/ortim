@@ -78,7 +78,26 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    # N818: our exception names (SandboxViolation, InvalidTransition,
+    # CyclicDAG, ...) read better as conditions than as `*Error` — a
+    # deliberate, consistent house style, not debt. Renaming them is a
+    # wide-blast-radius API change, not something to auto-apply.
+    "N818",
+    # B008: `typer.Option(...)` as a parameter default is the framework's
+    # own idiom (typer reads the CLI option's metadata from the default
+    # value) — not the "mutable default" footgun this rule targets.
+    "B008",
+    # UP042: `class X(str, Enum)` -> `class X(StrEnum)` is a real behavior
+    # change (StrEnum's __str__/repr/format differ from the multiple-
+    # inheritance shape), not a mechanical rewrite. Our two flagged enums
+    # (ProjectState, WorkspaceMode) are state-machine values that flow
+    # into JSON serialization and the audit hash-chain — swapping their
+    # base class needs a deliberate, tested pass, not a lint autofix.
+    # Tracked follow-up, not an oversight (Faz-0 CI hardening, 2026-09-20).
+    "UP042",
+]
 
 [tool.mypy]
 python_version = "3.11"

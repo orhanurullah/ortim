@@ -3,22 +3,21 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
 from __future__ import annotations
-import os
+
 import sys
 from pathlib import Path
+
 import typer
-from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
+
 from ortim.cli import _globals
 from ortim.cli._globals import (
-    console,
-    _apply_invocation_overrides, _block_if_archived,
-    _ensure_workspace_root, _load_codebase_summary, _print_next_action,
+    _ensure_workspace_root,
+    _print_next_action,
     _resolve_project,
+    console,
 )
-from ortim.env import env_get
-from ortim.orchestrator import InvalidTransition, Project, ProjectState
+from ortim.orchestrator import Project, bootstrap_brownfield
 
 workspace_app = typer.Typer(
     help="Workspace lifecycle: list, archive, cleanup, migrate, doctor.",
@@ -92,7 +91,7 @@ def init(
         )
     except InitError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     from ortim.audit import AuditLogger
     from ortim.workspace import register_workspace
@@ -112,7 +111,7 @@ def init(
     # this workspace from anywhere. Also marks it as `current`. The init
     # location carries no id (resolver doesn't know it yet); we substitute
     # the project's freshly-minted id so the entry is keyed correctly.
-    from ortim.workspace import WorkspaceLocation as _WL
+    from ortim.workspace import WorkspaceLocation as _WL  # noqa: N814
 
     register_workspace(
         _WL(path=location.path, mode=location.mode, id=project.id),
@@ -133,7 +132,7 @@ def init(
     )
     if is_brownfield:
         console.print(
-            f"\nNext: [cyan]ortim run[/cyan] (Architect skips Babel, "
+            "\nNext: [cyan]ortim run[/cyan] (Architect skips Babel, "
             "drafts PRD from existing code)."
         )
     else:
@@ -173,7 +172,7 @@ def new(
             )
         except FileNotFoundError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         console.print(
             f"[green]Brownfield[/green] [bold]{project.id}[/bold] ({name}) "
             f"materialized via [cyan]{mode}[/cyan]"
@@ -309,10 +308,9 @@ def rescan(
     # Pool layout puts the user's code in `<workspace>/source/`; project
     # mode has it at the workspace root itself. Picking the right scan
     # target keeps the two layouts on the same rescan flow.
-    if location.mode is WorkspaceMode.PROJECT:
-        source = location.path
-    else:
-        source = location.path / "source"
+    source = (
+        location.path if location.mode is WorkspaceMode.PROJECT else location.path / "source"
+    )
 
     cache_dir = store.metadata_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -347,10 +345,9 @@ def baseline(
         console.print(f"[yellow]{project.id} is not a brownfield project.[/yellow]")
         raise typer.Exit(1)
 
-    if location.mode is WorkspaceMode.PROJECT:
-        source = location.path
-    else:
-        source = location.path / "source"
+    source = (
+        location.path if location.mode is WorkspaceMode.PROJECT else location.path / "source"
+    )
     cache_dir = store.metadata_dir / ".cache"
 
     if recapture:
@@ -358,7 +355,7 @@ def baseline(
             new_baseline = capture_baseline(source)
         except RuntimeError as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
         write_baseline(cache_dir, new_baseline)
         console.print(
             f"[green]Captured[/green] cmd=[cyan]{new_baseline.cmd}[/cyan] "
@@ -790,10 +787,10 @@ def workspace_migrate(
         location = migrate_pool_to_project(pool_path, to.resolve(), move=move)
     except MigrationError as exc:
         console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except FileNotFoundError as exc:
         console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     # Per-workspace audit log (the migrated state.json now lives under .ortim/)
     AuditLogger(path=location.metadata_dir / "audit.jsonl").log(

@@ -19,8 +19,6 @@ INTAKE → PRD_DRAFTING (Babel skipped, user owns the PRD seed).
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
 from pathlib import Path
 
 from ortim.babel import app_class_from_brief
@@ -61,10 +59,7 @@ def detect_brownfield(cwd: Path) -> bool:
     for manifest in _BROWNFIELD_MANIFEST_FILES:
         if (cwd / manifest).exists():
             return True
-    for source_dir in _BROWNFIELD_SOURCE_DIRS:
-        if (cwd / source_dir).is_dir():
-            return True
-    return False
+    return any((cwd / source_dir).is_dir() for source_dir in _BROWNFIELD_SOURCE_DIRS)
 
 
 def _default_name_from_path(cwd: Path) -> str:

@@ -32,6 +32,7 @@ import os
 import stat
 import sys
 import tomllib
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -201,12 +202,10 @@ def save(cfg: Config, path: Path | None = None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(_serialize(cfg), encoding="utf-8")
     if os.name == "posix":
-        try:
+        # chmod can legitimately fail on exotic filesystems (NFS squash,
+        # FAT mounts); permission tightening is best-effort.
+        with suppress(OSError):
             os.chmod(target, stat.S_IRUSR | stat.S_IWUSR)
-        except OSError:
-            # chmod can legitimately fail on exotic filesystems (NFS
-            # squash, FAT mounts); permission tightening is best-effort.
-            pass
     return target
 
 

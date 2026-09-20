@@ -15,7 +15,6 @@ Covers:
 
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -31,7 +30,7 @@ from ortim.babel import StructuredIntent  # noqa: E402
 from ortim.main import _lock_prd, app  # noqa: E402
 from ortim.memory import MemoryLoader  # noqa: E402
 from ortim.orchestrator import Project, ProjectState  # noqa: E402
-from ortim.scope import ScopeManifest, ScopedFeature, load_scope, save_scope  # noqa: E402
+from ortim.scope import ScopedFeature, load_scope, save_scope  # noqa: E402
 from ortim.scope.schema import scope_path  # noqa: E402
 
 

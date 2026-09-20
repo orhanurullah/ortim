@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import os
 import time
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Iterator
 
 
 class LockTimeout(Exception):
@@ -48,7 +48,7 @@ def file_lock(
                 _force_remove(lock_dir)
                 continue
             if time.time() >= deadline:
-                raise LockTimeout(f"Could not acquire {lock_dir} within {timeout}s")
+                raise LockTimeout(f"Could not acquire {lock_dir} within {timeout}s") from None
             time.sleep(poll_interval)
 
     pid_file = lock_dir / "pid"
@@ -70,10 +70,8 @@ def _is_stale(lock_dir: Path, max_age_seconds: float) -> bool:
 def _force_remove(lock_dir: Path) -> None:
     try:
         for child in lock_dir.iterdir():
-            try:
+            with suppress(FileNotFoundError):
                 child.unlink()
-            except FileNotFoundError:
-                pass
         lock_dir.rmdir()
     except FileNotFoundError:
         pass

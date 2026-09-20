@@ -16,7 +16,6 @@ from ortim.workspace.init import (
     init_project,
 )
 
-
 # ---------------- detect_brownfield ----------------
 
 

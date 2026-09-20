@@ -16,7 +16,7 @@ from typing import Protocol
 from ortim.executor.reviewer import ReviewVerdict
 from ortim.executor.test_runner import TestResult
 from ortim.executor.worker import FileChange, WorkerOutput
-from ortim.mutation.case import CatchResult, CatchRateReport, MutationCase
+from ortim.mutation.case import CatchRateReport, CatchResult, MutationCase
 from ortim.mutation.scoring import score_case
 from ortim.orchestrator import TaskSpec
 from ortim.skills import Skill

@@ -32,7 +32,6 @@ from ortim.llm.client import LLMResponse  # noqa: E402
 from ortim.memory import MemoryLoader  # noqa: E402
 from ortim.orchestrator import TaskDAG, TaskSpec  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Parser unit tests
 # ---------------------------------------------------------------------------

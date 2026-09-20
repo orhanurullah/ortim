@@ -268,9 +268,8 @@ def aggregate(
                         per_task_worker_ok[task_id] += 1
                     elif event == "worker_sandbox_violation":
                         per_task_sandbox[task_id] += 1
-                    elif event == "reviewer_verdict":
-                        if entry.get("approved") is False:
-                            per_task_rejects[task_id] += 1
+                    elif event == "reviewer_verdict" and entry.get("approved") is False:
+                        per_task_rejects[task_id] += 1
 
                 if event == "executor_skill_resolved":
                     names = entry.get("worker_skills") or []

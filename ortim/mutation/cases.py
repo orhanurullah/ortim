@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from ortim.mutation.case import MutationCase
 
-
 _OFF_BY_ONE = MutationCase(
     name="sum_consecutive_pairs",
     bug_class="off-by-one",

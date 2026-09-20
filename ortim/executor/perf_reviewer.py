@@ -20,7 +20,6 @@ from ortim.llm import LLMClient
 from ortim.memory import MemoryLoader
 from ortim.orchestrator import TaskSpec
 
-
 Severity = Literal["high", "medium", "low"]
 EstimatedCost = Literal["low", "medium", "high"]
 

@@ -26,7 +26,6 @@ from ortim.llm.providers import (  # noqa: E402
     resolve_provider,
 )
 
-
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -89,7 +88,7 @@ def test_client_ollama_constructs_without_api_key() -> None:
             os.environ["OLLAMA_API_KEY"] = prev
 
 
-def test_client_ollama_honors_OLLAMA_BASE_URL_env_override() -> None:
+def test_client_ollama_honors_OLLAMA_BASE_URL_env_override() -> None:  # noqa: N802
     """Operator with Ollama on a remote host overrides the URL via
     OLLAMA_BASE_URL. Verifies the env override path."""
     prev = os.environ.get("OLLAMA_BASE_URL")

@@ -11,8 +11,8 @@ the friendly error when no project is discoverable.
 from __future__ import annotations
 
 import json
-import os
 import sys
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -22,7 +22,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from ortim.main import app  # noqa: E402
-from ortim.workspace import init_project  # noqa: E402
 
 
 @pytest.fixture
@@ -592,11 +591,11 @@ def test_workspace_cleanup_dry_run_default(project_dir: Path) -> None:
     runner.invoke(app, ["workspace", "archive"])
     # Back-date the project so it matches --older-than 1
     import json as _json
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     state_path = project_dir / ".ortim" / "state.json"
     state = _json.loads(state_path.read_text(encoding="utf-8"))
-    old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     state["created_at"] = old
     state_path.write_text(_json.dumps(state, indent=2), encoding="utf-8")
 
@@ -611,11 +610,11 @@ def test_workspace_cleanup_yes_actually_deletes(project_dir: Path) -> None:
     runner = CliRunner()
     runner.invoke(app, ["workspace", "archive"])
     import json as _json
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     state_path = project_dir / ".ortim" / "state.json"
     state = _json.loads(state_path.read_text(encoding="utf-8"))
-    old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    old = (datetime.now(UTC) - timedelta(days=10)).isoformat()
     state["created_at"] = old
     state_path.write_text(_json.dumps(state, indent=2), encoding="utf-8")
 

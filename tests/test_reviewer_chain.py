@@ -422,7 +422,6 @@ def test_reviewer_length_mismatch_triggers_retry_then_succeeds() -> None:
     one — observed in todo-greenfield-4 T-005, 9-of-13). Validator catches,
     retry tells the LLM the expected count, second attempt emits both."""
     from ortim.executor.reviewer import CodeReviewerAgent
-    from ortim.executor.worker import FileChange, WorkerOutput
 
     short_verdict = json.dumps({
         "criteria_verdicts": [
@@ -487,7 +486,6 @@ def test_reviewer_length_mismatch_three_strikes_raises() -> None:
     """Three consecutive count mismatches → RuntimeError (operator must
     investigate; retrying further is wasted budget)."""
     from ortim.executor.reviewer import CodeReviewerAgent
-    from ortim.executor.worker import FileChange, WorkerOutput
 
     short_verdict = json.dumps({
         "criteria_verdicts": [

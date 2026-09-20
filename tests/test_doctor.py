@@ -14,7 +14,6 @@ monkeypatch + tmp_path. Integration coverage focuses on:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -43,7 +42,6 @@ from ortim.doctor import (  # noqa: E402
     run_all_checks,
     to_json_dict,
 )
-
 
 # ---------------------------------------------------------------------
 # Individual check tests

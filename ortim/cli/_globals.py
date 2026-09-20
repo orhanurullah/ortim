@@ -10,14 +10,12 @@ in a single, testable location.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
-from ortim.env import env_get
-from ortim.orchestrator import InvalidTransition, Project, ProjectState
+from ortim.orchestrator import Project, ProjectState
 
 # ---------------------------------------------------------------------------
 # Global singletons
@@ -41,7 +39,7 @@ WORKSPACE_ROOT = Path(os.getenv("WORKSPACE_ROOT", "./workspaces"))
 #     user's cwd / WORKSPACE_ROOT for their own files.
 #
 # ORTIM_REPO_ROOT env var still overrides REPO_ROOT for legacy setups.
-from ortim import ASSETS_ROOT  # noqa: E402  (re-export so CLI imports stay terse)
+from ortim import ASSETS_ROOT  # noqa: F401, E402  (re-export so CLI imports stay terse)
 
 REPO_ROOT = (
     Path(os.getenv("ORTIM_REPO_ROOT", "")).resolve()
@@ -153,7 +151,7 @@ _NEXT_ACTIONS: dict[ProjectState, tuple[str, str]] = {
 }
 
 
-def _print_next_action(project: "Project") -> None:
+def _print_next_action(project: Project) -> None:
     """Print a single "Next: <command>" hint for the project's state.
 
     The state machine already knows the legal next steps; this surfaces
@@ -212,7 +210,7 @@ def _resolve_project(arg: str | None):
         location = resolve_workspace(arg=arg)
     except WorkspaceNotFound as exc:
         console.print(f"[red]{exc}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     store = ProjectStore(location)
     try:
@@ -221,7 +219,7 @@ def _resolve_project(arg: str | None):
         console.print(
             f"[red]Workspace state not found at {location.state_file}[/red]"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     os.environ["AUDIT_LOG_PATH"] = str(store.audit_log_path())
     return project, store, location
 
@@ -249,7 +247,7 @@ def _block_if_archived(project, action: str = "modify") -> None:
         raise typer.Exit(1)
 
 
-def _load_codebase_summary(project: "Project", workspace: Path):
+def _load_codebase_summary(project: Project, workspace: Path):
     """Load the cached codebase summary for a brownfield project, or None."""
     if not project.is_brownfield:
         return None

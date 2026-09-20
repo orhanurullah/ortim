@@ -30,7 +30,6 @@ import re
 
 from ortim.orchestrator import TaskSpec
 
-
 # Category → keyword patterns. Each pattern is matched with `\b` word
 # boundaries case-insensitively. Order is insignificant — multiple
 # matches across categories simply yield multiple category tags.

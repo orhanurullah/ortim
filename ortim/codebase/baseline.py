@@ -35,7 +35,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from ortim.env import env_get
@@ -192,7 +192,7 @@ def capture(workspace: Path, cmd: str | None = None, timeout: int = 600) -> Test
     tail = combined[-4000:] if len(combined) > 4000 else combined
     return TestBaseline(
         cmd=chosen,
-        captured_at=datetime.now(tz=timezone.utc).isoformat(),
+        captured_at=datetime.now(tz=UTC).isoformat(),
         passing=passing,
         skipped=skipped,
         failed=failed,

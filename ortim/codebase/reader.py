@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import ast
 import hashlib
-import json
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pathspec
@@ -26,7 +25,6 @@ from ortim.codebase import frameworks
 from ortim.codebase.schema import (
     CodebaseSummary,
     FileEntry,
-    FrameworkHint,
     ModuleSymbols,
     ScanStats,
 )
@@ -280,7 +278,7 @@ def scan_codebase(
 
     summary = CodebaseSummary(
         root=str(root_resolved),
-        scanned_at=datetime.now(timezone.utc).isoformat(),
+        scanned_at=datetime.now(UTC).isoformat(),
         file_count=len(files),
         truncated=truncated,
         files=files,
@@ -426,9 +424,8 @@ def _extract_python(text: str) -> tuple[list[str], list[str]]:
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 imports.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.append(node.module)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append(node.module)
     return (names, imports)
 
 
@@ -459,9 +456,8 @@ def _extract_dart(text: str) -> tuple[list[str], list[str]]:
             continue  # constructor / type call false-positive
         if n.startswith("_"):
             continue
-        if n in {"if", "for", "while", "switch", "return", "main"}:
-            if n != "main":
-                continue
+        if n in {"if", "for", "while", "switch", "return", "main"} and n != "main":
+            continue
         if n not in seen:
             seen.add(n)
             names.append(n)

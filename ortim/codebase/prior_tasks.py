@@ -45,8 +45,8 @@ class ModuleExports:
 def collect_prior_outputs(
     *,
     workspace: Path,
-    dag: "TaskDAG",
-    status_file: "TaskStatusFile",
+    dag: TaskDAG,
+    status_file: TaskStatusFile,
     current_task_id: str,
     per_module_char_budget: int = DEFAULT_PER_MODULE_CHAR_BUDGET,
     total_char_budget: int = DEFAULT_TOTAL_CHAR_BUDGET,
@@ -61,7 +61,7 @@ def collect_prior_outputs(
     if not done_tasks:
         return {}
 
-    by_module: dict[str, list["TaskSpec"]] = {}
+    by_module: dict[str, list[TaskSpec]] = {}
     for task in done_tasks:
         scope = primary_scope(task)
         by_module.setdefault(scope, []).append(task)
@@ -141,7 +141,7 @@ def format_prior_outputs_block(modules: dict[str, ModuleExports]) -> str:
 
 
 def _select_done_tasks(
-    dag: "TaskDAG", status_file: "TaskStatusFile", *, exclude_id: str
+    dag: TaskDAG, status_file: TaskStatusFile, *, exclude_id: str
 ) -> list:
     # Lazy import keeps `ortim.codebase` independent of
     # `ortim.executor` at module-load time (avoids a circular import
@@ -159,7 +159,7 @@ def _select_done_tasks(
     return out
 
 
-def primary_scope(task: "TaskSpec") -> str:
+def primary_scope(task: TaskSpec) -> str:
     """TaskSpec.module_scope may be a single str (legacy) or a list.
     Use the first entry as the primary scope. If the field doesn't
     exist for whatever reason, fall back to the task id."""

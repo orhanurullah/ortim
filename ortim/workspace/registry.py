@@ -17,11 +17,10 @@ cross-process overhead on every CLI call.
 
 from __future__ import annotations
 
-import json
 import os
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +30,7 @@ REGISTRY_VERSION = 1
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def registry_path() -> Path:
@@ -70,7 +69,7 @@ class Registry(BaseModel):
     # ---------- I/O ----------
 
     @classmethod
-    def load(cls) -> "Registry":
+    def load(cls) -> Registry:
         """Read `~/.ortim/registry.json`. Returns empty registry if missing
         or corrupt — the caller never has to think about file-not-found.
         """

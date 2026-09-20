@@ -15,8 +15,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ortim.scope import (  # noqa: E402
-    ScopeManifest,
     ScopedFeature,
+    ScopeManifest,
     load_scope,
     save_scope,
     suggest_initial_scope,
@@ -119,9 +119,8 @@ def test_save_and_load_roundtrip_preserves_lock_state() -> None:
 
 
 def test_load_scope_missing_raises_file_not_found() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        with pytest.raises(FileNotFoundError):
-            load_scope(Path(td))
+    with tempfile.TemporaryDirectory() as td, pytest.raises(FileNotFoundError):
+        load_scope(Path(td))
 
 
 def test_manual_features_keep_source_tag() -> None:

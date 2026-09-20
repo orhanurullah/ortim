@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -33,7 +33,7 @@ DEFAULT_TENANT = "default"
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class StateEvent(BaseModel):
@@ -126,7 +126,7 @@ class Project(BaseModel):
         project_id: str,
         root: Path,
         tenant_id: str = DEFAULT_TENANT,
-    ) -> "Project":
+    ) -> Project:
         path = cls.workspace_path(project_id, root, tenant_id) / "state.json"
         return cls.model_validate_json(path.read_text(encoding="utf-8"))
 

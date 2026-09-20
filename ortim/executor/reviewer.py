@@ -34,7 +34,6 @@ from ortim.memory import MemoryLoader
 from ortim.orchestrator import TaskSpec
 from ortim.skills import Skill, format_skills_block
 
-
 CriterionStatus = Literal["pass", "fail", "partial", "unverifiable"]
 
 # Sub-categorization for `unverifiable`. Lets the runner, CLI, and audit log

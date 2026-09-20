@@ -14,7 +14,6 @@ One-off script. Not part of the test suite (would burn $ on every pytest run).
 
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -23,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv(REPO_ROOT / ".env")
 
 from ortim.agents.architect import ArchitectAgent  # noqa: E402

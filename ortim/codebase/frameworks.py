@@ -24,9 +24,9 @@ Electron, React, Vue) added incrementally as M1+ exit criteria require.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from ortim.codebase.schema import FrameworkHint
 

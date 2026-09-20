@@ -9,6 +9,8 @@ source code is never sent.
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import typer
 
 from ortim.cli._globals import _resolve_project, console
@@ -41,7 +43,7 @@ def _device_login(client: CloudClient, cfg: cloud_config.CloudConfig) -> None:
         start = client.device_start()
     except CloudError as e:
         console.print(f"[red]Could not start the login flow:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     user_code = str(start.get("userCode", ""))
     device_code = str(start.get("deviceCode", ""))
@@ -61,10 +63,8 @@ def _device_login(client: CloudClient, cfg: cloud_config.CloudConfig) -> None:
         f"[dim]The code expires in {expires_in // 60} minutes. "
         "Waiting for approval…[/dim]\n"
     )
-    try:
-        webbrowser.open(full_uri)
-    except Exception:
-        pass  # headless / no browser — the printed URL is the fallback
+    with suppress(Exception):
+        webbrowser.open(full_uri)  # headless / no browser — printed URL is the fallback
 
     consecutive_errors = 0
     deadline = time.monotonic() + expires_in
@@ -76,7 +76,7 @@ def _device_login(client: CloudClient, cfg: cloud_config.CloudConfig) -> None:
             consecutive_errors += 1
             if consecutive_errors >= 3:
                 console.print(f"[red]Cloud unreachable while waiting:[/red] {e}")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
             continue
         consecutive_errors = 0
 
@@ -148,7 +148,7 @@ def login(
             "run [cyan]ortim cloud login[/cyan] (no email) to sign in via "
             "the browser.[/dim]"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     cfg.email = email
     cfg.token = token
     path = cloud_config.save(cfg)
@@ -184,7 +184,7 @@ def orgs() -> None:
         result = client.list_orgs()
     except CloudError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     if not result:
         console.print("[dim]No organizations. Create one in the dashboard.[/dim]")
         return
@@ -209,7 +209,7 @@ def link(
         resp = client.link_project(org, project_name)
     except CloudError as e:
         console.print(f"[red]Link failed:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     state = cloud_sync.LinkState(org_id=org, project_id=str(resp.get("id")), synced_seq=0)
     path = cloud_sync.save_link_state(location.metadata_dir, state)
     console.print(
@@ -256,7 +256,7 @@ def sync(
     except CloudError as e:
         # Offline / server error: do NOT advance the cursor, do NOT fail.
         console.print(f"[yellow]Sync deferred (cloud unreachable):[/yellow] {e}")
-        raise typer.Exit(0)
+        raise typer.Exit(0) from None
 
     link_state.synced_seq = new_cursor
     cloud_sync.save_link_state(location.metadata_dir, link_state)
@@ -288,14 +288,12 @@ def policy(
         pol = client.get_policy(org_id)
     except CloudError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     # Cache for local run-time enforcement (execute / run-all read this).
     if metadata_dir is not None:
-        try:
+        with suppress(OSError):
             cloud_policy.save_policy_cache(metadata_dir, org_id, pol)
-        except OSError:
-            pass
 
     gates = pol.get("mandatoryGates") or []
     providers = pol.get("allowedProviders") or []
@@ -342,7 +340,7 @@ def share_audit(
         resp = client.share_audit(link_state.project_id, expires_in_days)
     except CloudError as e:
         console.print(f"[red]Could not create the share link:[/red] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     url = resp.get("url")
     if not url:

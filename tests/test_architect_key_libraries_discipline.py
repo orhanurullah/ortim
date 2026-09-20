@@ -31,7 +31,6 @@ from ortim.audit import AuditLogger  # noqa: E402
 from ortim.llm.client import LLMResponse  # noqa: E402
 from ortim.memory import MemoryLoader  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Parser unit tests
 # ---------------------------------------------------------------------------

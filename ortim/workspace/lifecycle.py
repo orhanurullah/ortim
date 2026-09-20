@@ -14,9 +14,8 @@ from __future__ import annotations
 import re
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from ortim.orchestrator.project import Project
 from ortim.workspace.registry import Registry
@@ -25,7 +24,7 @@ from ortim.workspace.store import ProjectStore
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class ArchiveError(Exception):
@@ -75,13 +74,13 @@ def _last_active(project: Project) -> str:
 
 def _age_days(iso_ts: str, now: datetime | None = None) -> float:
     """Days between `iso_ts` and `now` (UTC)."""
-    ref = now or datetime.now(timezone.utc)
+    ref = now or datetime.now(UTC)
     try:
         ts = datetime.fromisoformat(iso_ts)
     except ValueError:
         return 0.0
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
     return (ref - ts).total_seconds() / 86400.0
 
 
@@ -100,7 +99,7 @@ def find_cleanup_candidates(
     """
     reg = Registry.load()
     candidates: list[CleanupCandidate] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     seen_paths: set[Path] = set()
     for entry in reg.entries():
@@ -304,8 +303,8 @@ def doctor_scan(pool_root: Path | None = None) -> list[DoctorFinding]:
                     code="archived_aging",
                     entity=entry.id,
                     message=(
-                        f"Archived > 90 days. Run `ortim workspace cleanup "
-                        f"--older-than 90 --yes` to delete."
+                        "Archived > 90 days. Run `ortim workspace cleanup "
+                        "--older-than 90 --yes` to delete."
                     ),
                 )
             )
@@ -350,9 +349,7 @@ def _is_metadata(entry: Path) -> bool:
         return True
     if entry.is_dir() and name in _META_DIRS:
         return True
-    if _META_LOG_PATTERN.match(name):
-        return True
-    return False
+    return bool(_META_LOG_PATTERN.match(name))
 
 
 def migrate_pool_to_project(

@@ -38,7 +38,7 @@ class TaskStatusFile(BaseModel):
     records: dict[str, TaskRunRecord] = Field(default_factory=dict)
 
     @classmethod
-    def load_or_init(cls, workspace: Path, project_id: str) -> "TaskStatusFile":
+    def load_or_init(cls, workspace: Path, project_id: str) -> TaskStatusFile:
         path = workspace / "task_status.json"
         if path.exists():
             return cls.model_validate_json(path.read_text(encoding="utf-8"))

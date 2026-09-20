@@ -22,6 +22,8 @@ from ortim.extend.drift import (
     DriftFinding,
     DriftReport,
     inspect_drift,
+)
+from ortim.extend.drift import (
     to_json_dict as drift_to_json_dict,
 )
 from ortim.extend.extender_agent import (

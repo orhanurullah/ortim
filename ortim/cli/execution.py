@@ -3,21 +3,19 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
 from __future__ import annotations
-import os
-import sys
-from pathlib import Path
+
 import typer
-from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
+
 from ortim.cli import _globals
 from ortim.cli._globals import (
+    _block_if_archived,
+    _load_codebase_summary,
+    _resolve_project,
     console,
-    _apply_invocation_overrides, _block_if_archived,
-    _ensure_workspace_root, _load_codebase_summary, _resolve_project,
 )
 from ortim.env import env_get
-from ortim.orchestrator import InvalidTransition, Project, ProjectState
+from ortim.orchestrator import Project, ProjectState
 
 skill_app = typer.Typer(help="M3 skills inspection.", no_args_is_help=True)
 
@@ -68,7 +66,7 @@ def skill_list(
         project = Project.load(project_id, _globals.WORKSPACE_ROOT)
     except FileNotFoundError:
         console.print(f"[red]Project {project_id} not found[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     workspace = project.current_metadata_dir(_globals.WORKSPACE_ROOT)
 
     from ortim.architecture import GoldenPathInputs, select_tier
@@ -214,7 +212,7 @@ def tasks(
     project, store, _ = _resolve_project(project_id)
     dag_path = store.artifact_path("task_dag.json")
     if not dag_path.exists():
-        console.print(f"[yellow]No task DAG yet — run orchestrator first.[/yellow]")
+        console.print("[yellow]No task DAG yet — run orchestrator first.[/yellow]")
         raise typer.Exit(0)
 
     dag = TaskDAG.model_validate_json(dag_path.read_text(encoding="utf-8"))
@@ -234,8 +232,8 @@ def tasks(
 
     batches = dag.topological_batches()
     console.print(
-        f"\n[bold]Execution batches[/bold] (parallel within batch, "
-        f"sequential across batches):"
+        "\n[bold]Execution batches[/bold] (parallel within batch, "
+        "sequential across batches):"
     )
     for i, batch in enumerate(batches, start=1):
         console.print(f"  Batch {i}: {', '.join(batch)}")
@@ -312,7 +310,7 @@ def _load_for_execute(project_id: str | None):
     workspace = store.metadata_dir
     dag_path = workspace / "task_dag.json"
     if not dag_path.exists():
-        console.print(f"[red]task_dag.json missing — run orchestrator first[/red]")
+        console.print("[red]task_dag.json missing — run orchestrator first[/red]")
         raise typer.Exit(1)
     dag = TaskDAG.model_validate_json(dag_path.read_text(encoding="utf-8"))
 
@@ -327,7 +325,7 @@ def _load_for_execute(project_id: str | None):
         reviewer_llm = client_for("reviewer")
     except RuntimeError as e:
         console.print(f"[red]{e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     memory = MemoryLoader(_globals.ASSETS_ROOT)
     audit = AuditLogger(path=store.audit_log_path())
@@ -968,7 +966,7 @@ def run_all(
                 raise typer.Exit(1)
         except GitNotAvailable as e:
             console.print(f"[red]{e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     batches = dag.topological_batches()
     tasks_by_id = {t.id: t for t in dag.tasks}
@@ -1023,7 +1021,7 @@ def run_all(
         lock_ctx = file_lock(workspace / ".exec", timeout=5.0)
     except Exception as e:
         console.print(f"[red]Failed to acquire workspace exec lock: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     try:
         with lock_ctx:
@@ -1055,7 +1053,7 @@ def run_all(
         console.print(
             "[red]Another run-all is in progress on this workspace[/red]"
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     finalized = _maybe_finalize_done(project, status_file, dag, workspace)
     if finalized:

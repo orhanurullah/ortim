@@ -4,44 +4,19 @@
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from ortim.llm.client import MAX_RETRIES, LLMResponse, _is_retryable
-
+from ortim.llm.client import LLMResponse, _is_retryable
 
 # ---- _is_retryable classification ----
 
 
-class FakeAPIStatusError(Exception):
-    """Minimal stand-in for anthropic.APIStatusError."""
-
-    def __init__(self, status_code: int):
-        self.status_code = status_code
-        super().__init__(f"HTTP {status_code}")
-
-
-class FakeAPIConnectionError(Exception):
-    """Minimal stand-in for anthropic.APIConnectionError."""
-
-    pass
-
-
 def test_retryable_503():
-    exc = FakeAPIStatusError(503)
-    # Patch the isinstance checks — _is_retryable uses anthropic types.
-    from anthropic import APIStatusError
-
-    real_exc = type("FakeStatus", (APIStatusError,), {})
-    # We can't easily instantiate the real class, so test the message path.
+    # _is_retryable uses anthropic's real exception types via isinstance,
+    # which aren't easily constructible here — test the message-path
+    # fallback instead (see _is_retryable's docstring for the two paths).
     assert _is_retryable(Exception("overloaded server"))
 
 
 def test_retryable_connection_error():
-    from anthropic import APIConnectionError
 
     # Message path fallback
     assert _is_retryable(Exception("rate limit exceeded"))
@@ -176,7 +151,7 @@ def test_critical_role_warning(capsys, monkeypatch):
 
     from ortim.llm.router import client_for
 
-    client = client_for("architect")
+    client_for("architect")
     captured = capsys.readouterr()
     assert "WARNING" in captured.err
     assert "architect" in captured.err.lower()
@@ -191,6 +166,6 @@ def test_non_critical_role_no_warning(capsys, monkeypatch):
 
     from ortim.llm.router import client_for
 
-    client = client_for("babel")
+    client_for("babel")
     captured = capsys.readouterr()
     assert "WARNING" not in captured.err

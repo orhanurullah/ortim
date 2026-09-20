@@ -3,21 +3,17 @@
 # SPDX-License-Identifier: FSL-1.1-Apache-2.0
 # Copyright (c) 2026 ortim.dev
 from __future__ import annotations
+
 import os
-import sys
-from pathlib import Path
+
 import typer
-from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
+
 from ortim.cli import _globals
 from ortim.cli._globals import (
+    _resolve_project,
     console,
-    _apply_invocation_overrides, _block_if_archived,
-    _ensure_workspace_root, _load_codebase_summary, _resolve_project,
 )
-from ortim.env import env_get
-from ortim.orchestrator import InvalidTransition, Project, ProjectState
 
 _DEMO_DEFAULT_BRIEF = (
     "Build a simple CLI todo manager that adds, lists, completes, "
@@ -51,7 +47,7 @@ def budget(
             project, _, _ = _resolve_project(project_id)
             effective_id = project.id
         else:
-            from ortim.workspace import discover_from_cwd, ProjectStore
+            from ortim.workspace import ProjectStore, discover_from_cwd
 
             loc = discover_from_cwd()
             if loc is not None:
@@ -63,7 +59,7 @@ def budget(
     tracker = BudgetTracker()
     report = tracker.report(effective_id)
 
-    title_scope = "all" if not effective_id else effective_id
+    title_scope = effective_id if effective_id else "all"
     table = Table(title=f"Budget Report ({title_scope})")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right")
