@@ -49,7 +49,7 @@ if _user_cfg is not None:
 # Backward-compat re-exports: tests + downstream callers import these from
 # `ortim.main`. Canonical homes are `ortim.cli._globals` (globals/helpers)
 # and `ortim.cli.{planning,execution,admin,workspace}` (private helpers).
-from ortim.cli._globals import (  # noqa: F401, E402
+from ortim.cli._globals import (  # noqa: F401, E402, I001
     ASSETS_ROOT,
     REPO_ROOT,
     WORKSPACE_ROOT,
@@ -86,7 +86,7 @@ from ortim.cli.planning import (  # noqa: F401, E402
 )
 from ortim.cli.workspace import _list_pool_projects  # noqa: F401, E402
 
-from ortim import __version__ as _version
+from ortim import __version__ as _version  # noqa: E402, I001
 
 app = typer.Typer(help=f"Ortim — agentic dev pipeline (v{_version})")
 console = Console()

@@ -28,6 +28,11 @@ dependencies = [
     "rich>=13.0",
     "python-dotenv>=1.0",
     "pathspec>=0.12",
+    # Used directly by ortim/llm/client.py (httpx.ConnectError etc. in the
+    # OpenAI-compatible/local-LLM retry path) — previously an undeclared
+    # transitive dependency of anthropic, which happened to mask a fresh
+    # install missing it until CI ran on a truly clean environment.
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
